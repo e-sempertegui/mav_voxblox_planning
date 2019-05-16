@@ -12,6 +12,7 @@ MavLocalPlanner::MavLocalPlanner(const ros::NodeHandle& nh,
       command_publishing_spinner_(1, &command_publishing_queue_),
       planning_spinner_(1, &planning_queue_),
       verbose_(false),
+      //global_frame_id_("map"),
       global_frame_id_("map"),
       local_frame_id_("odom"),
       mpc_prediction_horizon_(300),
@@ -110,7 +111,7 @@ MavLocalPlanner::MavLocalPlanner(const ros::NodeHandle& nh,
   loco_smoother_.setOptimizeTime(true);
   loco_smoother_.setResampleTrajectory(true);
   loco_smoother_.setResampleVisibility(true);
-  loco_smoother_.setNumSegments(5);
+  loco_smoother_.setNumSegments(6); //DEfault value = 5
 }
 
 void MavLocalPlanner::odometryCallback(const nav_msgs::Odometry& msg) {
@@ -392,6 +393,12 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
       if (num_failures_ > max_failures_) {
         current_waypoint_ = -1;
       }
+      
+      // ADDED PLOTTING ALSO FOR NON SUCCESFUL PATH
+      ROS_INFO("PLOTTING NON COLLISION-FREE PATH...");
+      mav_msgs::EigenTrajectoryPointVector path;
+      mav_trajectory_generation::sampleWholeTrajectory(trajectory, constraints_.sampling_dt, &path);
+      replacePath(path);
     }
   }
 }
@@ -576,7 +583,7 @@ void MavLocalPlanner::visualizePath() {
     std::lock_guard<std::recursive_mutex> guard(path_mutex_);
 
     path_marker = createMarkerForPath(path_queue_, local_frame_id_,
-                                      mav_visualization::Color::Black(),
+                                      mav_visualization::Color::Teal(),
                                       "local_path", 0.05);
   }
   marker_array.markers.push_back(path_marker);

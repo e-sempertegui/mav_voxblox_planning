@@ -9,7 +9,7 @@ LocoSmoother::LocoSmoother()
     : PolynomialSmoother(),
       resample_trajectory_(false),
       resample_visibility_(false),
-      num_segments_(3),
+      num_segments_(3),   //Default value = 3
       add_waypoints_(false) {
   split_at_collisions_ = false;
 }

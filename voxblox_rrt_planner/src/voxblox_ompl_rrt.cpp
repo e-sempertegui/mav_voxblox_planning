@@ -13,8 +13,14 @@ VoxbloxOmplRrt::VoxbloxOmplRrt(const ros::NodeHandle& nh,
       verbose_(false),
       optimistic_(true),
       trust_approx_solution_(false),
+      alpha(1.0),
+      beta(1.0),
       lower_bound_(Eigen::Vector3d::Zero()),
       upper_bound_(Eigen::Vector3d::Zero()) {
+
+  std::string planner_string_;
+  std::string default_string = "kRrtStar";
+
   nh_private_.param("robot_radius", robot_radius_, robot_radius_);
   nh_private_.param("num_seconds_to_plan", num_seconds_to_plan_,
                     num_seconds_to_plan_);
@@ -22,6 +28,11 @@ VoxbloxOmplRrt::VoxbloxOmplRrt(const ros::NodeHandle& nh,
                     simplify_solution_);
   nh_private_.param("trust_approx_solution", trust_approx_solution_,
                     trust_approx_solution_);
+  nh_private_.param("alpha", alpha, alpha);
+  nh_private_.param("beta", beta, beta);
+  nh_private_.param("planner_type_",  planner_string_, default_string);
+
+  planner_type_ = string_to_planner_enum(planner_string_);
 }
 
 void VoxbloxOmplRrt::setBounds(const Eigen::Vector3d& lower_bound,
@@ -53,6 +64,59 @@ void VoxbloxOmplRrt::setupProblem() {
     problem_setup_.setEsdfVoxbloxCollisionChecking(robot_radius_, esdf_layer_);
   }
   problem_setup_.setDefaultObjective();
+  //problem_setup_.setConstantAltitudeObjective(start.position_W.z(), alpha, beta);
+  if (planner_type_ == kRrtConnect) {
+    problem_setup_.setRrtConnect();
+  } else if (planner_type_ == kRrtStar) {
+    problem_setup_.setRrtStar();
+  } else if (planner_type_ == kInformedRrtStar) {
+    problem_setup_.setInformedRrtStar();
+  } else if (planner_type_ == kPrm) {
+    problem_setup_.setPrm();
+  } else if (planner_type_ == kBitStar) {
+    problem_setup_.setBitStar();
+  } else {
+    problem_setup_.setDefaultPlanner();
+  }
+
+  if (lower_bound_ != upper_bound_) {
+    ompl::base::RealVectorBounds bounds(3);
+    bounds.setLow(0, lower_bound_.x());
+    bounds.setLow(1, lower_bound_.y());
+    bounds.setLow(2, lower_bound_.z());
+
+    bounds.setHigh(0, upper_bound_.x());
+    bounds.setHigh(1, upper_bound_.y());
+    bounds.setHigh(2, upper_bound_.z());
+
+    // Define start and goal positions.
+    problem_setup_.getGeometricComponentStateSpace()
+        ->as<ompl::mav::StateSpace>()
+        ->setBounds(bounds);
+  }
+
+  // This is a fraction of the space extent! Not actual metric units. For
+  // mysterious reasons. Thanks OMPL!
+  double validity_checking_resolution = 0.01;
+  if ((upper_bound_ - lower_bound_).norm() > 1e-3) {
+    // If bounds are set, set this to approximately one voxel.
+    validity_checking_resolution =
+        voxel_size_ / (upper_bound_ - lower_bound_).norm() / 2.0;
+  }
+  problem_setup_.setStateValidityCheckingResolution(
+      validity_checking_resolution);
+}
+
+void VoxbloxOmplRrt::setupMyProblem(const mav_msgs::EigenTrajectoryPoint& start) {
+  if (optimistic_) {
+    CHECK_NOTNULL(tsdf_layer_);
+    problem_setup_.setTsdfVoxbloxCollisionChecking(robot_radius_, tsdf_layer_);
+  } else {
+    CHECK_NOTNULL(esdf_layer_);
+    problem_setup_.setEsdfVoxbloxCollisionChecking(robot_radius_, esdf_layer_);
+  }
+  //problem_setup_.setDefaultObjective();
+  problem_setup_.setConstantAltitudeObjective(start.position_W.z(), alpha, beta);
   if (planner_type_ == kRrtConnect) {
     problem_setup_.setRrtConnect();
   } else if (planner_type_ == kRrtStar) {
@@ -282,5 +346,17 @@ double VoxbloxOmplRrt::getDistanceEigenToState(
 
   return (eigen - state_pos).norm();
 }
+
+// RrtPlannerType string_to_planner_enum(const std::string& planner_string){
+//   if (planner_string == "kRrtConnect") return kRrtConnect;
+//   else if (planner_string == "kRrtStar") return kRrtStar;
+//   else if (planner_string == "kInformedRrtStar") return kInformedRrtStar;
+//   else if (planner_string == "kPrm") return kPrm;
+//   else if (planner_string == "kBitStar") return kBitStar;
+//   else{
+//     ROS_INFO("Specified planner is not currently available. Using default RRT* instead...");
+//     return kRrtStar;
+//   }
+// }
 
 }  // namespace mav_planning

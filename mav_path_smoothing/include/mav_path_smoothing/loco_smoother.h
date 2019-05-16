@@ -43,7 +43,9 @@ class LocoSmoother : public PolynomialSmoother {
     resample_visibility_ = resample_visibility;
   }
   int getNumSegments() const { return num_segments_; }
-  void setNumSegments(int num_segments) { num_segments_ = num_segments; }
+  void setNumSegments(int num_segments) { num_segments_ = num_segments; 
+    ROS_INFO("[Loco Smoother] SETTING NUMBER OF SEGMENTS FOR PATH SMOOTHER = %d", num_segments_);
+  }
   // Controls whether waypoints are added as soft costs in the LOCO problem.
   bool getAddWaypoints() const { return add_waypoints_; }
   void setAddWaypoints(bool add_waypoints) { add_waypoints_ = add_waypoints; }

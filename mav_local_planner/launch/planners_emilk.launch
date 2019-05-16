@@ -1,0 +1,65 @@
+<launch>
+  <arg name="mav_name" default="ueli"/>
+  <arg name="frame_id" default="odom_b" />
+  <arg name="verbose" default="true"/>
+  <arg name="odometry" default="msf_core/odometry"/>
+  <arg name="voxel_size" default="0.05" />  <!-- default value in examples: 0.2 -->
+
+  <group ns="$(arg mav_name)">
+
+    <!--   GLOBAL PLANNER (RRT)  -->
+    <node name="voxblox_rrt_planner" pkg="voxblox_rrt_planner" type="voxblox_rrt_planner_node" output="screen" clear_params="true">
+      <remap from="voxblox_rrt_planner/esdf_map_in" to="esdf_map" />
+      <remap from="voxblox_rrt_planner/tsdf_map_in" to="tsdf_map" />
+      <param name="tsdf_voxel_size" value="$(arg voxel_size)" />
+      <param name="tsdf_voxels_per_side" value="16" />
+
+      <param name="visualize" value="true" />
+      <param name="robot_radius" value="0.5" />
+      <param name="update_mesh_every_n_sec" value="1.0" />
+      <param name="num_seconds_to_plan" value="2.0" />
+      <param name="do_smoothing" value="false" />
+      <param name="frame_id" value="$(arg frame_id)" />
+      <param name="world_frame" value="$(arg frame_id)" />
+      <param name="trust_approx_solution" value="true" />
+      <param name="publish_traversable" value="true" />
+      <param name="split_at_collisions" value="true" />
+      <param name="optimize_time" value="true" />
+      <param name="verbose" value="$(arg verbose)" />
+    </node>
+
+
+    <!--  LOCAL PLANNER  -->
+
+    <node name="mav_local_planner" pkg="mav_local_planner" type="mav_local_planner_node" output="screen">
+      <remap from="odometry" to="$(arg odometry)" />
+      <remap from="mav_local_planner/esdf_map_in" to="esdf_map" />
+      <remap from="mav_local_planner/tsdf_map_in" to="tsdf_map" />
+
+      <param name="tsdf_voxel_size" value="$(arg voxel_size)" />
+      <param name="tsdf_voxels_per_side" value="16" />
+      <!--param name="esdf_max_distance_m" value="2.0" /-->
+      <param name="update_mesh_every_n_sec" value="0.0" />
+      <param name="publish_traversable" value="true" />
+      <param name="slice_level" value="1.0" />
+      <param name="publish_slices" value="true" />
+
+      <param name="local_frame_id" value="$(arg frame_id)" />
+      <!--<param name="world_frame" value="$(arg frame_id)" /-->
+      <param name="global_frame_id" value="$(arg frame_id)" />
+      <param name="replan_dt" value="0.25" />
+      <param name="command_publishing_dt" value="0.25" />
+      <param name="replan_lookahead_sec" value="1.0" />
+      <param name="mpc_prediction_horizon" value="300" />
+
+      <param name="robot_radius" value="0.5" />
+      <param name="planning_horizon_m" value="4.0" />       <!-- IS THIS PARAMETER USED ANYWHERE IN FILE????? -->
+      <param name="autostart" value="true" />
+      <param name="verbose" value="$(arg verbose)" />
+      <param name="v_max" value="2.0" />
+      <param name="a_max" value="2.0" />
+      <param name="avoid_collisions" value="true" />
+    </node>
+  </group>
+
+</launch>

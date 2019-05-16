@@ -1,10 +1,12 @@
 <launch>
   <arg name="mav_name" default="firefly"/>
   <arg name="frame_id" default="odom" />
-  <arg name="voxel_size" default="0.2" />
+  <arg name="voxel_size" default="0.2" /> <!--"0.2" is the default-->
+  <!--arg name="voxblox_path" default="/home/emilk/Downloads/mav_voxblox_planning_maps/machine_hall/voxblox/rs_esdf_0.10.voxblox" /-->
 
   <group ns="$(arg mav_name)">
     <node name="voxblox_rrt_planner" pkg="voxblox_rrt_planner" type="voxblox_rrt_planner_node" output="screen" clear_params="true">
+      <remap from="odometry" to="ground_truth/odometry" />
       <remap from="voxblox_rrt_planner/esdf_map_in" to="esdf_map" />
       <remap from="voxblox_rrt_planner/tsdf_map_in" to="tsdf_map" />
       <param name="tsdf_voxel_size" value="$(arg voxel_size)" />
@@ -13,6 +15,7 @@
       <param name="visualize" value="true" />
       <param name="robot_radius" value="0.5" />
 
+      <!--param name="voxblox_path" value="$(arg voxblox_path)" /-->
       <param name="update_mesh_every_n_sec" value="0.0" />
       <param name="num_seconds_to_plan" value="2.0" />
       <param name="do_smoothing" value="false" />
@@ -23,6 +26,33 @@
       <param name="split_at_collisions" value="true" />
       <param name="optimize_time" value="true" />
       <param name="verbose" value="true" />
+      <param name="optimistic" value="true" />
+
+      <!-- Specify if constant altitude flight is required -->
+      <param name="constant_altitude" value="true" />
+
+      <!-- Specify planner to use from the following: -->
+      <!-- RRT connect = kRrtConnect -->
+      <!-- RRT* = kRrtStar -->
+      <!-- InformedRRT* = kInformedRrtStar -->
+      <!-- Probabilistic RoadMap = kPrm -->
+      <!-- Bit* = kBitStar -->
+      <param name="planner_type_" value="kInformedRrtStar" />
+
+      <!-- Activate replanning functionality -->
+      <param name="activate_replanning" value="true" />
+
+      <!-- Timer period for global trajectory replanning -->
+      <param name="gp_replan_dt" value="1" />
+
+      <!-- Time window for moving ahead along the global path -->
+      <!-- Should satisfy  gp_replan_lookahead_sec_>=num_seconds_to_plan -->
+      <param name="gp_replan_lookahead_sec_" value="3.0" />
+
+      <!-- WEIGHTS FOR OPTIMIZATION OBJECTIVE of the form (alpha*LenghtObj + beta*AltitudeObj) -->
+      <param name="alpha" value="1.0" />
+      <param name="beta" value="10.0" />
+
     </node>
   </group>
 </launch>

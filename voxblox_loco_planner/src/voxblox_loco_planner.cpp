@@ -12,9 +12,9 @@ VoxbloxLocoPlanner::VoxbloxLocoPlanner(const ros::NodeHandle& nh,
       verbose_(false),
       visualize_(true),
       frame_id_("odom"),
-      num_segments_(3),
-      num_random_restarts_(5),
-      random_restart_magnitude_(0.5),
+      num_segments_(6),   //Default value = 3
+      num_random_restarts_(10),     //Default value = 5
+      random_restart_magnitude_(1), //Default value = 0.5
       planning_horizon_m_(4.0),
       loco_(3) {
   constraints_.setParametersFromRos(nh_private_);
@@ -125,7 +125,10 @@ bool VoxbloxLocoPlanner::getTrajectoryBetweenWaypoints(
     return false;
   }
 
+  ROS_INFO_STREAM("[Voxblox Loco Planner] NEW GOAL POSE = " << goal.position_W.transpose());
+
   // If we're doing hotstarts, need to save the previous d_p.
+  ROS_INFO("[Voxblox Loco Planner] NUMBER OF SEGMENTS IN PLANNER = %d", num_segments_);
   loco_.setupFromTrajectoryPoints(start, goal, num_segments_, total_time);
   Eigen::VectorXd x0, x;
   loco_.getParameterVector(&x0);
@@ -155,6 +158,10 @@ bool VoxbloxLocoPlanner::getTrajectoryBetweenWaypoints(
 
   if (success) {
     // TODO(helenol): Retime the trajectory!
+  }
+
+  if (!success){
+    ROS_INFO("NO COLLISION-FREE SOLUTION TO OPTMIZATION PROBLEM!...");
   }
 
   if (verbose_) {
@@ -198,8 +205,10 @@ bool VoxbloxLocoPlanner::getTrajectoryTowardGoal(
   // Try to find an intermediate goal to go to if the edge of the planning
   // horizon is occupied.
   bool goal_found = true;
+  ROS_INFO_STREAM("GOAL POSITION = " << goal_point.position_W.transpose());
   if (getMapDistance(goal_point.position_W) < constraints_.robot_radius) {
     const double step_size = esdf_map_->voxel_size();
+    ROS_INFO("INTERMEDIATE GOAL SELECTION ROUTINE EXECUTING...");
     goal_found =
         findIntermediateGoal(start_point, goal_point, step_size, &goal_point);
   }
@@ -207,6 +216,7 @@ bool VoxbloxLocoPlanner::getTrajectoryTowardGoal(
   if (!goal_found ||
       (goal_point.position_W - start_point.position_W).norm() <
           kGoalReachedRange) {
+    ROS_INFO("INTERMEDIATE GOAL NOT FOUND!...");
     return false;
   }
 
@@ -251,6 +261,7 @@ bool VoxbloxLocoPlanner::findIntermediateGoal(
 
   bool success = false;
   while (planning_distance >= 0.0) {
+    ROS_INFO("DEBUG: Planning distance = %f      Robot radius = %f",planning_distance, constraints_.robot_radius);
     success = getNearestFreeSpaceToPoint(new_goal.position_W, step_size,
                                          &new_goal.position_W);
     if (success) {
@@ -278,12 +289,14 @@ bool VoxbloxLocoPlanner::getNearestFreeSpaceToPoint(
   const size_t kMaxIter = 20;
   for (size_t i = 0; i < kMaxIter; i++) {
     double distance = getMapDistanceAndGradient(final_pos, &gradient);
+    ROS_INFO("DISTANCE = %f",distance);
     if (distance >= constraints_.robot_radius) {
       *new_pos = final_pos;
       return true;
     }
 
     if (gradient.norm() > 1e-6) {
+      ROS_INFO("CHANGING THE FINAL POSE AS DISTANCE IS LOWER THAN ROBOT RADIUS...");
       final_pos += gradient.normalized() * step_size;
     }
   }

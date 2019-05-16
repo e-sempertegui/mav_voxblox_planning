@@ -15,7 +15,9 @@
   <env name="GAZEBO_MODEL_PATH" value="${GAZEBO_MODEL_PATH}:$(find rotors_gazebo)/models"/>
   <env name="GAZEBO_RESOURCE_PATH" value="${GAZEBO_RESOURCE_PATH}:$(find rotors_gazebo)/models"/>
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
-    <arg name="world_name" value="$(arg world_name)" />
+    <!-- <arg name="world_name" value="$(arg world_name)" /> -->
+    <!-- <arg name="world_name" value="$(find rotors_gazebo)/worlds/empty.world" /> -->
+    <arg name="world_name" value="$(find rotors_gazebo)/worlds/emilk_ceiling.world" />
     <arg name="debug" value="$(arg debug)" />
     <arg name="paused" value="$(arg paused)" />
     <arg name="gui" value="$(arg gui)" />
@@ -45,13 +47,15 @@
       <rosparam file="$(find mav_lowlevel_attitude_controller)/resources/PID_attitude_$(arg mav_name).yaml" />
     </node>
 
-    <node name="hovering_example" pkg="rotors_gazebo" type="hovering_example" output="screen" >
-    </node>
+    <!-- <node name="hovering_example" pkg="rotors_gazebo" type="hovering_example" output="screen" > -->
+    <!-- </node> -->
 
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
 
     <!-- Transforms -->
     <node pkg="tf" type="static_transform_publisher" name="world_odom_broadcaster" args="0 0 0 0 0 0 1 world odom 100" />
+
+    <!-- <node pkg="learning_tf" type="odom_baselink_broadcaster" name="odom_baselink_broadcaster" />  -->
   </group>
 
   <!-- Mapping and Planning -->

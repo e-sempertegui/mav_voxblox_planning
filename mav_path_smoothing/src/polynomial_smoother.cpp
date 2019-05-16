@@ -12,6 +12,7 @@ PolynomialSmoother::PolynomialSmoother()
       optimize_time_(true),
       split_at_collisions_(false),
       min_col_check_resolution_(0.1) {}
+      // n_smooth(1) {}
 
 void PolynomialSmoother::setParametersFromRos(const ros::NodeHandle& nh) {
   PathSmootherBase::setParametersFromRos(nh);
@@ -19,6 +20,7 @@ void PolynomialSmoother::setParametersFromRos(const ros::NodeHandle& nh) {
   nh.param("split_at_collisions", split_at_collisions_, split_at_collisions_);
   nh.param("min_col_check_resolution", min_col_check_resolution_,
            min_col_check_resolution_);
+  // nh.param("n_smooth", n_smooth, n_smooth);
 }
 
 bool PolynomialSmoother::getTrajectoryBetweenWaypoints(
@@ -33,6 +35,7 @@ bool PolynomialSmoother::getTrajectoryBetweenWaypoints(
       "smoothing/poly_linear");
 
   constexpr int N = 10;
+  // constexpr int N = n_smooth;
   constexpr int D = 3;
   mav_trajectory_generation::PolynomialOptimization<N> poly_opt(D);
 

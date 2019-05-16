@@ -12,6 +12,7 @@
 
 #include "voxblox_rrt_planner/ompl/ompl_types.h"
 #include "voxblox_rrt_planner/ompl/ompl_voxblox.h"
+#include "voxblox_rrt_planner/ompl/altitude_objective.h"
 
 namespace ompl {
 namespace mav {
@@ -27,6 +28,29 @@ class MavSetup : public geometric::SimpleSetup {
         ompl::base::OptimizationObjectivePtr(
             new ompl::base::PathLengthOptimizationObjective(
                 getSpaceInformation())));
+  }
+
+  // Templated function just to be have the function robust againts wrong type for objective weights, 
+  // which are then casted to double
+  template <class T, class U> 
+  void setConstantAltitudeObjective (const double h, T alpha, U beta) {
+    double w1 = (double) alpha;
+    double w2 = (double) beta;
+    // OMPL: provide optimisation objective to problem definition by passing an 
+    // OptimizationObjectivePtr from getBalancedObjective(,,,)
+    getProblemDefinition()->setOptimizationObjective(getBalancedObjective(h,w1,w2));
+  }
+
+  // Returns OptimizationObjectivePtr for weighted multi-objective problem
+  // consiting of path length and altitude
+  // Params w1, w2 : given by alpha, beta in launch file
+  // Param h: altitude/height of MAV when planning begins (via service call)
+  ompl::base::OptimizationObjectivePtr getBalancedObjective (const double h, const double w1, const double w2){
+    ompl::base::OptimizationObjectivePtr lengthObj(new ompl::base::PathLengthOptimizationObjective(
+                getSpaceInformation()));
+    ompl::base::OptimizationObjectivePtr altitudeObj(new ompl::mav::AltitudeObjective(getSpaceInformation(),h));
+
+    return w1*lengthObj + w2*altitudeObj; 
   }
 
   void setDefaultPlanner() { setRrtStar(); }

@@ -1,0 +1,10 @@
+<launch>
+  <arg name="mav_name" default="ueli"/>
+
+  <group ns="$(arg mav_name)">
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+
+    <!-- Transforms -->
+    <node pkg="tf" type="static_transform_publisher" name="world_odom_broadcaster" args="0 0 0 0 0 0 1 world odom 100" />
+  </group>
+</launch>

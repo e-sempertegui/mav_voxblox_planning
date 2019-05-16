@@ -5,6 +5,8 @@
 #include <mav_msgs/eigen_mav_msgs.h>
 #include <ros/ros.h>
 
+#include <string>
+
 #include "voxblox_rrt_planner/ompl/mav_setup.h"
 
 namespace mav_planning {
@@ -46,6 +48,7 @@ class VoxbloxOmplRrt {
 
   // Only call this once, only call this after setting all settings correctly.
   void setupProblem();
+  void setupMyProblem(const mav_msgs::EigenTrajectoryPoint& start);
 
   // Fixed start and end locations, returns list of waypoints between.
   bool getPathBetweenWaypoints(
@@ -67,6 +70,18 @@ class VoxbloxOmplRrt {
   void constructPrmRoadmap(double roadmap_construction_sec) {
     problem_setup_.setup();
     problem_setup_.constructPrmRoadmap(roadmap_construction_sec);
+  }
+
+  RrtPlannerType string_to_planner_enum(const std::string& planner_string){
+    if (planner_string == "kRrtConnect") return kRrtConnect;
+    else if (planner_string == "kRrtStar") return kRrtStar;
+    else if (planner_string == "kInformedRrtStar") return kInformedRrtStar;
+    else if (planner_string == "kPrm") return kPrm;
+    else if (planner_string == "kBitStar") return kBitStar;
+    else{
+      ROS_INFO("Specified planner is not currently available. Using default RRT* instead...");
+      return kRrtStar;
+    }
   }
 
  protected:
@@ -107,6 +122,10 @@ class VoxbloxOmplRrt {
   voxblox::Layer<voxblox::EsdfVoxel>* esdf_layer_;
 
   double voxel_size_;
+
+  // WEIGHT PARAMETERS for multi-objective optimisation
+  double alpha;
+  double beta;
 };
 
 }  // namespace mav_planning

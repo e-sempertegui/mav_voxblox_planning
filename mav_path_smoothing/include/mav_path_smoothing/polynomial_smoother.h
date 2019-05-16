@@ -84,6 +84,9 @@ class PolynomialSmoother : public PathSmootherBase {
   // Minimum distance between collision checks.
   double min_col_check_resolution_;
 
+  // Degree of polynomial smoothing (intended to be used as ros param)
+  // int n_smooth;
+
   // Functions for collision checking.
   MapDistanceFunctionType map_distance_func_;
   InCollisionFunctionType in_collision_func_;

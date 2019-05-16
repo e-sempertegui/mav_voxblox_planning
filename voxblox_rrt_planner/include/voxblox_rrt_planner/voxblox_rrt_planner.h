@@ -5,10 +5,14 @@
 #include <ros/ros.h>
 #include <memory>
 #include <string>
+#include <thread>
 
 #include <mav_msgs/conversions.h>
+#include <mav_msgs/default_topics.h>
 #include <mav_path_smoothing/polynomial_smoother.h>
 #include <mav_path_smoothing/loco_smoother.h>
+#include <mav_path_smoothing/velocity_ramp_smoother.h>
+#include <mav_msgs/eigen_mav_msgs.h>
 #include <mav_planning_common/physical_constraints.h>
 #include <mav_planning_msgs/PlannerService.h>
 #include <mav_planning_msgs/PolynomialTrajectory4D.h>
@@ -40,6 +44,9 @@ class VoxbloxRrtPlanner {
                            std_srvs::EmptyResponse& response);
 
   // Tools for trajectory smoothing and checking.
+  bool generateFeasibleTrajectoryRamp(
+      const mav_msgs::EigenTrajectoryPointVector& coordinate_path,
+      mav_msgs::EigenTrajectoryPointVector* path);
   bool generateFeasibleTrajectory(
       const mav_msgs::EigenTrajectoryPointVector& coordinate_path,
       mav_msgs::EigenTrajectoryPointVector* path);
@@ -56,6 +63,12 @@ class VoxbloxRrtPlanner {
   bool checkPhysicalConstraints(
       const mav_trajectory_generation::Trajectory& trajectory);
 
+  bool CollisionCheckTsdf (const Eigen::Vector3d& robot_position, 
+                          voxblox::Layer<voxblox::TsdfVoxel>* my_tsdf_layer) const;
+
+  // Callback for input data
+  void odometryCallback(const nav_msgs::Odometry& msg);
+
  private:
   void inferValidityCheckingResolution(const Eigen::Vector3d& bounding_box);
 
@@ -68,8 +81,15 @@ class VoxbloxRrtPlanner {
   void computeMapBounds(Eigen::Vector3d* lower_bound,
                         Eigen::Vector3d* upper_bound) const;
 
+  // Timer callback for global replanning
+  void gpTimerCallback(const ros::TimerEvent& event);
+
+  void replanningRoutine();
+
   ros::NodeHandle nh_;
   ros::NodeHandle nh_private_;
+
+  ros::Subscriber gp_odometry_sub_;
 
   ros::Publisher path_marker_pub_;
   ros::Publisher polynomial_trajectory_pub_;
@@ -113,6 +133,43 @@ class VoxbloxRrtPlanner {
   // Smoothing!
   PolynomialSmoother smoother_;
   LocoSmoother loco_smoother_;
+  VelocityRampSmoother ramp_smoother_;
+
+  //Flag for optimistic planning
+  bool optimistic_;
+
+  // Timer
+  ros::Timer gp_timer_;
+  double gp_replan_dt;
+  double gp_replan_lookahead_sec_;
+
+  // Async spinner and callbackqueue used for replanning
+  // Different thread is used to avoid timing issues
+  ros::CallbackQueue gp_queue_;
+  ros::AsyncSpinner gp_spinner_;
+
+  // RE-planning stuff
+  size_t path_idx;
+  size_t old_path_idx;
+  mav_msgs::EigenTrajectoryPointVector ramp_path;
+  mav_msgs::EigenTrajectoryPointVector global_path;
+  // int counter;
+  int init_pose_adjust_counter;
+
+  // Flag for activation of replanning feature
+  bool activate_replanning;
+
+  // Flag indicating whether a (re)planning iteration have finished and 
+  // is valid for the timer callback to replan (blocking function)
+  // bool able_to_plan;
+  bool replanning;
+
+  // Flag for optimisation objective
+  bool constant_altitude;
+
+  //Robot state.
+  mav_msgs::EigenOdometry odometry_;
+
 };
 
 }  // namespace mav_planning
