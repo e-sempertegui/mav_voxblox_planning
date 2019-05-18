@@ -1,6 +1,8 @@
 #ifndef MAV_PLANNING_COMMON_VISIBILITY_RESAMPLING_H_
 #define MAV_PLANNING_COMMON_VISIBILITY_RESAMPLING_H_
 
+#include <numeric>
+
 #include <mav_msgs/eigen_mav_msgs.h>
 
 #include "mav_planning_common/physical_constraints.h"
