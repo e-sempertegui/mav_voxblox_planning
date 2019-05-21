@@ -12,7 +12,7 @@
       <remap from="voxblox_node/esdf_map_out" to="esdf_map" />
       <remap from="voxblox_node/tsdf_map_out" to="tsdf_map" />
 
-      <param name="method" value="simple" />
+      <param name="method" value="fast" />
       <param name="publish_tsdf_map" value="true" />
       <param name="publish_esdf_map" value="true" />
       <param name="tsdf_voxel_size" value="$(arg voxel_size)" />

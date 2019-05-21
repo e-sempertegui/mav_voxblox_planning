@@ -404,9 +404,9 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
       
       // ADDED PLOTTING ALSO FOR NON SUCCESFUL PATH
       ROS_INFO("PLOTTING NON COLLISION-FREE PATH...");
-      mav_msgs::EigenTrajectoryPointVector path;
-      mav_trajectory_generation::sampleWholeTrajectory(trajectory, constraints_.sampling_dt, &path);
-      replacePath(path);
+      // mav_msgs::EigenTrajectoryPointVector path;
+      // mav_trajectory_generation::sampleWholeTrajectory(trajectory, constraints_.sampling_dt, &path);
+      // replacePath(path);
     }
   }
 }

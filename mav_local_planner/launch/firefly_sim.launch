@@ -5,7 +5,7 @@
   <arg name="enable_ground_truth" default="true" />
   <arg name="log_file" default="$(arg mav_name)" />
   <arg name="debug" default="false"/>
-  <arg name="gui" default="true"/>
+  <arg name="gui" default="false"/>
   <arg name="paused" default="false"/>
   <arg name="frame_id" default="odom" />
   <!-- The following line causes gzmsg and gzerr messages to be printed to the console
@@ -17,7 +17,7 @@
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
     <!-- <arg name="world_name" value="$(arg world_name)" /> -->
     <!-- <arg name="world_name" value="$(find rotors_gazebo)/worlds/empty.world" /> -->
-    <arg name="world_name" value="$(find rotors_gazebo)/worlds/emilk_ceiling.world" />
+    <arg name="world_name" value="$(find rotors_gazebo)/worlds/emilk_new.world" />
     <arg name="debug" value="$(arg debug)" />
     <arg name="paused" value="$(arg paused)" />
     <arg name="gui" value="$(arg gui)" />
