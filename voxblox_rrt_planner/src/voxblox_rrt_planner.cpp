@@ -227,7 +227,7 @@ void VoxbloxRrtPlanner::replanningRoutine(){
   mav_msgs::EigenTrajectoryPoint predicted_previous_pose;
 
   // Constants for adjusting estimated robot position (w.r.t. global path)
-  constexpr double kCloseToOdometry = 1.5;
+  constexpr double kCloseToOdometry = 3;
   constexpr double kPosesDistance = 0.03;   // How close poses need to be in order to consider them equal
   constexpr int kMaxFailureIterations = 7;
   constexpr int kSecondsInMotion = 5;  // must satisfy: kSecondsInMotion > num_seconds_to_plan + gp_replan_dt 

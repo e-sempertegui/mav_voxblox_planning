@@ -25,7 +25,7 @@ MavLocalPlanner::MavLocalPlanner(const ros::NodeHandle& nh,
       smoother_name_("loco"),
       current_waypoint_(-1),
       path_index_(0),
-      max_failures_(5),
+      max_failures_(5), // Specifies how many times whole planning process is repeated for a waypoint in case of failures
       num_failures_(0),
       esdf_server_(nh_, nh_private_),
       loco_planner_(nh_, nh_private_) {
@@ -708,23 +708,32 @@ bool MavLocalPlanner::dealWithFailure() {
   if (!goal_selector_.selectNextGoal(goal, waypoint, current_point,
                                      &current_goal)) {
     num_failures_++;
+    ROS_INFO("[Mav Local Planner][Dealing with Failure] CURRENT NUMBER OF FAILURES = %d",
+              num_failures_);
     if (num_failures_ > max_failures_) {
+      ROS_INFO("[Mav Local Planner][Dealing with Failure] Max number of failures reached!...");
       current_waypoint_ = -1;
     }
     return false;
   } else {
     if ((current_goal.position_W - waypoint.position_W).norm() < kCloseEnough) {
       // Goal is unchanged. :(
+      ROS_INFO("[Mav Local Planner][Dealing with Failure] MAV tried to found a new goal "
+                "but this goal is the same as the current waypoint you're tracking!...");
       temporary_goal_ = false;
       return false;
     } else if ((current_goal.position_W - goal.position_W).norm() <
                kCloseEnough) {
       // This is just the next waypoint that we're trying to go to.
+      ROS_INFO("[Mav Local Planner][Dealing with Failure] MAV found a new goal but this is "
+                "just the same as the next waypoint from the current one you are tracking...");
       current_waypoint_++;
       temporary_goal_ = false;
       return true;
     } else {
       // Then this is something different!
+      ROS_INFO("[Mav Local Planner][Dealing with Failure] MAV found a new (intermediate) goal."
+                "Appending it to the list of waypoints!...");
       temporary_goal_ = true;
       waypoints_.insert(waypoints_.begin() + current_waypoint_, current_goal);
       return true;

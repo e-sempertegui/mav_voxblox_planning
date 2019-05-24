@@ -3,7 +3,7 @@
   <arg name="frame_id" default="odom" />
   <arg name="verbose" default="false"/>
   <arg name="voxel_size" default="0.20" />
-  <arg name="robot_radius" default="0.6" />
+  <arg name="robot_radius" default="0.3" />
   <arg name="clear_radius" default="1.0" />
 
   <group ns="$(arg mav_name)">
@@ -18,7 +18,7 @@
       <param name="tsdf_voxel_size" value="$(arg voxel_size)" />
       <param name="tsdf_voxels_per_side" value="16" />
       <param name="esdf_max_distance_m" value="2.0" />
-      <param name="max_ray_length_m" value="20.0" />
+      <param name="max_ray_length_m" value="10.0" />
       <param name="voxel_carving_enabled" value="true" />
       <param name="color_mode" value="color" />
       <param name="use_tf_transforms" value="true" />
@@ -66,7 +66,7 @@
       <!-- <param name="planning_horizon_m" value="5.0" /> -->
 <!-- ======= -->
       <param name="robot_radius" value="$(arg robot_radius)" />
-      <param name="planning_horizon_m" value="20.0" />
+      <param name="planning_horizon_m" value="4.0" />
 <!-- >>>>>>> master -->
       <param name="autostart" value="true" />
       <param name="verbose" value="true" />
@@ -76,6 +76,9 @@
 
       <!-- What to do in case of failure. -->
       <param name="goal_selector_strategy" value="none" />
+
+      <param name="use_shotgun" value="false"/>
+      <param name="use_shotgun_path" value="false"/>
     </node>
   </group>
 </launch>

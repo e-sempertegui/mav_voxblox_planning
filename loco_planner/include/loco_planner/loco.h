@@ -31,7 +31,8 @@ class Loco {
     double w_w = 1.0;   // Waypoint cost weight (if waypoints set).
     double min_collision_sampling_dt = 0.1;
     double map_resolution = 0.1;  // Size of voxels in the map.
-    bool verbose = true;
+    // bool verbose = true;
+    bool verbose = false;
   };
 
   typedef std::function<double(const Eigen::VectorXd& position)>
