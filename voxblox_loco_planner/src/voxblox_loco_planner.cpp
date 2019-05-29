@@ -14,7 +14,7 @@ VoxbloxLocoPlanner::VoxbloxLocoPlanner(const ros::NodeHandle& nh,
       verbose_(false),
       visualize_(true),
       frame_id_("odom"),
-      num_segments_(6),   //Default value = 3
+      num_segments_(3),   //Default value = 3
       num_random_restarts_(10),     //Default value = 5
       random_restart_magnitude_(1), //Default value = 0.5
       planning_horizon_m_(4.0),
@@ -29,6 +29,7 @@ VoxbloxLocoPlanner::VoxbloxLocoPlanner(const ros::NodeHandle& nh,
   nh_private_.param("frame_id", frame_id_, frame_id_);
   nh_private_.param("planning_horizon_m", planning_horizon_m_,
                     planning_horizon_m_);
+  nh_private_.param("num_segments", num_segments_, num_segments_);
   nh_private_.param("use_shotgun", use_shotgun_, use_shotgun_);
   nh_private_.param("use_shotgun_path", use_shotgun_path_, use_shotgun_path_);
 

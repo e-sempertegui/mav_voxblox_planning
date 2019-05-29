@@ -98,6 +98,9 @@ class MavLocalPlanner {
   // Other internal stuff.
   void sendCurrentPose();
 
+  //Recovery mode changing to a goal-viewing orientation/
+  void RecoveryMode(); 
+
   ros::NodeHandle nh_;
   ros::NodeHandle nh_private_;
 
@@ -183,6 +186,7 @@ class MavLocalPlanner {
 
   // Planners -- yaw policy
   YawPolicy yaw_policy_;
+  YawPolicy recovery_yaw_policy_;
 
   // Planners -- local planners.
   VoxbloxLocoPlanner loco_planner_;
@@ -195,6 +199,12 @@ class MavLocalPlanner {
   // Intermediate goal selection, optionally in case of path-planning failures:
   GoalPointSelector goal_selector_;
   bool temporary_goal_;
+
+  //Settings - recovery mode
+  bool abort_executed_; //TODO: INITIALIZE!!!
+  bool recovery_mode_enabled_;
+  bool fully_reached_waypoint_;  // In a planning sense, is possible that not really fisically yet
+  int counter_for_recovery_;
 };
 
 }  // namespace mav_planning

@@ -27,6 +27,10 @@ MavLocalPlanner::MavLocalPlanner(const ros::NodeHandle& nh,
       path_index_(0),
       max_failures_(5), // Specifies how many times whole planning process is repeated for a waypoint in case of failures
       num_failures_(0),
+      abort_executed_(false),
+      recovery_mode_enabled_(false),
+      fully_reached_waypoint_(true),
+      counter_for_recovery_(0),
       esdf_server_(nh_, nh_private_),
       loco_planner_(nh_, nh_private_) {
   // Set up some settings.
@@ -50,6 +54,7 @@ MavLocalPlanner::MavLocalPlanner(const ros::NodeHandle& nh,
   nh_private_.param("autostart", autostart_, autostart_);
   nh_private_.param("plan_to_start", plan_to_start_, plan_to_start_);
   nh_private_.param("smoother_name", smoother_name_, smoother_name_);
+  nh_private_.param("recovery_mode_enabled_", recovery_mode_enabled_, recovery_mode_enabled_);
 
   // Publishers and subscribers.
   odometry_sub_ = nh_.subscribe(mav_msgs::default_topics::ODOMETRY, 1,
@@ -94,6 +99,10 @@ MavLocalPlanner::MavLocalPlanner(const ros::NodeHandle& nh,
   // Set up yaw policy.
   yaw_policy_.setPhysicalConstraints(constraints_);
   yaw_policy_.setYawPolicy(YawPolicy::PolicyType::kVelocityVector);
+
+  // Set up recovery yaw policy
+  recovery_yaw_policy_.setPhysicalConstraints(constraints_);
+  recovery_yaw_policy_.setYawPolicy(YawPolicy::PolicyType::kPointFacing);
 
   // Set up smoothers.
   const double voxel_size = esdf_server_.getEsdfMapPtr()->voxel_size();
@@ -166,6 +175,22 @@ void MavLocalPlanner::waypointListCallback(
 }
 
 void MavLocalPlanner::planningTimerCallback(const ros::TimerEvent& event) {
+
+  // ROS_INFO("Planning Timer CALLBACK!...");
+
+  if (recovery_mode_enabled_) {
+      if (!fully_reached_waypoint_){
+        counter_for_recovery_ ++;
+        if (counter_for_recovery_ >= 4){
+          RecoveryMode();
+          counter_for_recovery_ = 0;
+          // return; // Added so that current planning step is finished and you can start a fresh step to the actual waypoint you were supposed to go
+        }
+      } else {
+        counter_for_recovery_ = 0;
+      }
+  }
+
   // Wait on the condition variable from the publishing...
   if (should_replan_.wait_for(replan_dt_)) {
     if (verbose_) {
@@ -232,6 +257,8 @@ void MavLocalPlanner::planningStep() {
 
     // If the path doesn't ALREADY start near the odometry, the first waypoint
     // should be the current pose.
+
+    // THIS IS WHAT MAKES IT COME TO THE FIRST WAYPOINT IN THE CASE OF FAILURE IN THE WAY TO THE GOAL
     int waypoints_added = 0;
     if (plan_to_start_ &&
         (current_point.position_W - waypoints_.front().position_W).norm() >
@@ -351,6 +378,7 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
         ROS_INFO(
             "[Mav Local Planner][Plan Step] Current plan is valid, just "
             "rollin' with it.");
+        fully_reached_waypoint_ = 1;
         nextWaypoint();
         return;
       }
@@ -359,10 +387,13 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
     success = loco_planner_.getTrajectoryTowardGoal(path_chunk.front(),
                                                     waypoint, &trajectory);
     if (!success) {
+      fully_reached_waypoint_ = 0;
       if (path_chunk_collision_free) {
         ROS_INFO(
             "[Mav Local Planner][Plan Step] Couldn't find a solution :( "
             "Continuing existing solution.");
+        // TODO: The problem I thought of this routine happing more than 4 times because the waypoint
+        // is too far can be avoided if the branch lenght parameter is reduced (what Luca recommended) 
       } else {
         ROS_INFO(
             "[Mav Local Planner][Plan Step] ABORTING! No local solution "
@@ -374,6 +405,7 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
       return;
     } else {
       ROS_INFO("[Mav Local Planner][Plan Step] Appending new path chunk.");
+      fully_reached_waypoint_ = 1;
       if (trajectory.getMaxTime() <= 1e-6) {
         nextWaypoint();
       } else {
@@ -445,6 +477,7 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
       // mav_trajectory_generation::sampleWholeTrajectory(trajectory, constraints_.sampling_dt, &path);
       // replacePath(path);
 // =======
+      // fully_reached_waypoint_ = 0;
       dealWithFailure();
 // >>>>>>> master
     }
@@ -579,6 +612,8 @@ void MavLocalPlanner::abort() {
   // Make sure to clear the queue in the controller as well (we send about a
   // second of trajectories ahead).
   sendCurrentPose();
+  // Set abort flag
+  abort_executed_ = 1;
 }
 
 void MavLocalPlanner::clearTrajectory() {
@@ -738,6 +773,42 @@ bool MavLocalPlanner::dealWithFailure() {
       waypoints_.insert(waypoints_.begin() + current_waypoint_, current_goal);
       return true;
     }
+  }
+}
+
+void MavLocalPlanner::RecoveryMode(){
+  // Vector containing initial and final trajectory points (same position, different orientations)
+  mav_msgs::EigenTrajectoryPointVector yaw_path_on_spot;
+  // Intial and final trajectory point
+  mav_msgs::EigenTrajectoryPoint initial_point;
+  mav_msgs::EigenTrajectoryPoint desired_point;
+  // Waypoint you were supposed to reach
+  mav_msgs::EigenTrajectoryPoint waypoint = waypoints_[current_waypoint_];
+  // Set waypoint as point you wish to face/look at
+  recovery_yaw_policy_.setFacingPoint(waypoint.position_W);
+  // Set position and orientation for initial point from odometry
+  initial_point.position_W = odometry_.position_W;
+  initial_point.orientation_W_B = odometry_.orientation_W_B;
+  yaw_path_on_spot.push_back(initial_point);
+  //Set position for final point (also from odometry as rotation in place is desired)
+  desired_point.position_W = odometry_.position_W;
+  yaw_path_on_spot.push_back(desired_point);
+
+  // Apply yaw policy to the 'path_on_spot' to get yaw interpolation for the path
+  recovery_yaw_policy_.applyPolicyInPlace(&yaw_path_on_spot);
+
+  // Clear path queue just to be sure that first thing controller will do is to follow my
+  // rotation trajectory assigned below
+  path_queue_.clear();
+
+  // Send 'path_on_spot' to path_queue to be followed by the controller
+  path_queue_.insert(path_queue_.end(), yaw_path_on_spot.begin(),
+                      yaw_path_on_spot.end());
+  // TODO: ensure that after this routine is executed you replan again to the waypoint
+  if (abort_executed_){
+    // Restart controller timer when abort routine was executed
+    command_publishing_timer_.start();
+    abort_executed_ = 0;   // Reset the flag
   }
 }
 

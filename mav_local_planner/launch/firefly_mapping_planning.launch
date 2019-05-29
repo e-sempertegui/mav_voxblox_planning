@@ -60,6 +60,7 @@
       <param name="command_publishing_dt" value="0.25" />
       <param name="replan_lookahead_sec" value="1.0" />
       <param name="mpc_prediction_horizon" value="300" />
+      <param name="num_segments" value="6" />
 
 <!-- <<<<<<< HEAD -->
       <!-- <param name="robot_radius" value="0.5" /> -->
@@ -79,6 +80,9 @@
 
       <param name="use_shotgun" value="false"/>
       <param name="use_shotgun_path" value="false"/>
+
+      <!-- Set recovery mode -->
+      <param name="recovery_mode_enabled" value="false"/>
     </node>
   </group>
 </launch>
