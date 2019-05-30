@@ -27,7 +27,11 @@
       <param name="split_at_collisions" value="true" />
       <param name="optimize_time" value="true" />
       <param name="verbose" value="true" />
+      <param name="simplify_solution" value="false" />
       <param name="optimistic" value="true" />
+
+      <!-- Set maximum distance between nodes in the tree -->
+      <param name="max_branch_length" value="4.0" />
 
       <!-- Specify if constant altitude flight is required -->
       <param name="constant_altitude" value="true" />
@@ -38,7 +42,7 @@
       <!-- InformedRRT* = kInformedRrtStar -->
       <!-- Probabilistic RoadMap = kPrm -->
       <!-- Bit* = kBitStar -->
-      <param name="planner_type_" value="kInformedRrtStar" />
+      <param name="planner_type_" value="kRrtStar" />
 
       <!-- Activate replanning functionality -->
       <param name="activate_replanning" value="true" />

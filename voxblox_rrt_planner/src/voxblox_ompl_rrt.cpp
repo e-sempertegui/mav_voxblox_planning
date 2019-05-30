@@ -13,8 +13,9 @@ VoxbloxOmplRrt::VoxbloxOmplRrt(const ros::NodeHandle& nh,
       verbose_(false),
       optimistic_(true),
       trust_approx_solution_(false),
-      alpha(1.0),
-      beta(1.0),
+      max_branch_length_(1.0),
+      alpha_(1.0),
+      beta_(1.0),
       lower_bound_(Eigen::Vector3d::Zero()),
       upper_bound_(Eigen::Vector3d::Zero()) {
 
@@ -28,9 +29,10 @@ VoxbloxOmplRrt::VoxbloxOmplRrt(const ros::NodeHandle& nh,
                     simplify_solution_);
   nh_private_.param("trust_approx_solution", trust_approx_solution_,
                     trust_approx_solution_);
-  nh_private_.param("alpha", alpha, alpha);
-  nh_private_.param("beta", beta, beta);
-  nh_private_.param("planner_type_",  planner_string_, default_string);
+  nh_private_.param("alpha", alpha_, alpha_);
+  nh_private_.param("beta", beta_, beta_);
+  nh_private_.param("planner_type", planner_string_, default_string);
+  nh_private_.param("max_branch_length", max_branch_length_, max_branch_length_);
 
   planner_type_ = string_to_planner_enum(planner_string_);
 }
@@ -116,7 +118,7 @@ void VoxbloxOmplRrt::setupMyProblem(const mav_msgs::EigenTrajectoryPoint& start)
     problem_setup_.setEsdfVoxbloxCollisionChecking(robot_radius_, esdf_layer_);
   }
   //problem_setup_.setDefaultObjective();
-  problem_setup_.setConstantAltitudeObjective(start.position_W.z(), alpha, beta);
+  problem_setup_.setConstantAltitudeObjective(start.position_W.z(), alpha_, beta_);
   if (planner_type_ == kRrtConnect) {
     problem_setup_.setRrtConnect();
   } else if (planner_type_ == kRrtStar) {
@@ -157,6 +159,26 @@ void VoxbloxOmplRrt::setupMyProblem(const mav_msgs::EigenTrajectoryPoint& start)
   }
   problem_setup_.setStateValidityCheckingResolution(
       validity_checking_resolution);
+
+  // problem_setup_.getPlanner()->getRange(); //DOESN't work as the points is for base-planner type only
+  
+  // Set maximum lenght of a node that can be added to the RRT tree
+  // i.e. all samples with higher distance are projected back to this range
+  std::dynamic_pointer_cast<ompl::geometric::RRTstar>(problem_setup_.getPlanner())
+  ->setRange(max_branch_length_);
+
+  // ROS_INFO("[DEBUG] PLANNER RANGE: %f", 
+  //   std::dynamic_pointer_cast<ompl::geometric::RRTstar>(problem_setup_.getPlanner())
+  //   ->getRange());
+  // ROS_INFO("[DEBUG] REWIRE FACTOR: %f", 
+  //   std::dynamic_pointer_cast<ompl::geometric::RRTstar>(problem_setup_.getPlanner())
+  //   ->getRewireFactor());
+  // ROS_INFO("[DEBUG] PRUNING OPTION?: %d", 
+  //   std::dynamic_pointer_cast<ompl::geometric::RRTstar>(problem_setup_.getPlanner())
+  //   ->getTreePruning());
+  // ROS_INFO("[DEBUG] K-NEAREST?: %d", 
+  //   std::dynamic_pointer_cast<ompl::geometric::RRTstar>(problem_setup_.getPlanner())
+  //   ->getKNearest());
 }
 
 bool VoxbloxOmplRrt::getPathBetweenWaypoints(
@@ -347,6 +369,7 @@ double VoxbloxOmplRrt::getDistanceEigenToState(
   return (eigen - state_pos).norm();
 }
 
+// Method moved to header file!
 // RrtPlannerType string_to_planner_enum(const std::string& planner_string){
 //   if (planner_string == "kRrtConnect") return kRrtConnect;
 //   else if (planner_string == "kRrtStar") return kRrtStar;

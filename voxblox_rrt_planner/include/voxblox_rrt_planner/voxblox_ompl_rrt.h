@@ -124,8 +124,12 @@ class VoxbloxOmplRrt {
   double voxel_size_;
 
   // WEIGHT PARAMETERS for multi-objective optimisation
-  double alpha;
-  double beta;
+  double alpha_;
+  double beta_;
+
+  // Max length of branches between nodes. Make sure max_branch_length > 0 as otherwise
+  // OMPL default is considered (~7 m)
+  double max_branch_length_;
 };
 
 }  // namespace mav_planning
