@@ -4,8 +4,8 @@
   <arg name="odometry_topic" default="msf_core/odometry"/>
   <arg name="verbose" default="true"/>
   <arg name="voxel_size" default="0.20" />
-  <arg name="robot_radius" default="0.3" />
-  <arg name="clear_radius" default="1.0" />
+  <arg name="robot_radius" default="0.55" />
+  <arg name="clear_radius" default="1.5" />
 
   <group ns="$(arg mav_name)">
 	    <node name="mav_local_planner" pkg="mav_local_planner" type="mav_local_planner_node" args="-alsologtostderr" output="screen" clear_params="true">

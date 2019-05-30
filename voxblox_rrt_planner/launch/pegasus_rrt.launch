@@ -1,12 +1,12 @@
 <launch>
   <arg name="mav_name" default="pegasus"/>
   <arg name="frame_id" default="odom_a" />
-  <arg name="robot_radius" default="0.3" />
+  <arg name="robot_radius" default="0.55" />
   <arg name="voxel_size" default="0.2" /> <!--"0.2" is the default-->
 
   <group ns="$(arg mav_name)">
     <node name="voxblox_rrt_planner" pkg="voxblox_rrt_planner" type="voxblox_rrt_planner_node" output="screen" clear_params="true">
-      <remap from="odometry" to="ground_truth/odometry" />
+      <remap from="odometry" to="msf_core/odometry" />
       <remap from="voxblox_rrt_planner/esdf_map_in" to="esdf_map" />
       <remap from="voxblox_rrt_planner/tsdf_map_in" to="tsdf_map" />
       <param name="tsdf_voxel_size" value="$(arg voxel_size)" />
