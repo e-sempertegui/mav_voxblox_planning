@@ -1,9 +1,8 @@
 <launch>
-  <arg name="mav_name" default="firefly"/>
-  <arg name="frame_id" default="odom" />
+  <arg name="mav_name" default="pegasus"/>
+  <arg name="frame_id" default="odom_a" />
   <arg name="robot_radius" default="0.3" />
   <arg name="voxel_size" default="0.2" /> <!--"0.2" is the default-->
-  <!--arg name="voxblox_path" default="/home/emilk/Downloads/mav_voxblox_planning_maps/machine_hall/voxblox/rs_esdf_0.10.voxblox" /-->
 
   <group ns="$(arg mav_name)">
     <node name="voxblox_rrt_planner" pkg="voxblox_rrt_planner" type="voxblox_rrt_planner_node" output="screen" clear_params="true">
@@ -16,7 +15,6 @@
       <param name="visualize" value="true" />
       <param name="robot_radius" value="$(arg robot_radius)" />
 
-      <!--param name="voxblox_path" value="$(arg voxblox_path)" /-->
       <param name="update_mesh_every_n_sec" value="0.0" />
       <param name="num_seconds_to_plan" value="2.0" />
       <param name="do_smoothing" value="false" />
@@ -27,11 +25,7 @@
       <param name="split_at_collisions" value="true" />
       <param name="optimize_time" value="true" />
       <param name="verbose" value="true" />
-      <param name="simplify_solution" value="false" />
       <param name="optimistic" value="true" />
-
-      <!-- Set maximum distance between nodes in the tree -->
-      <param name="max_branch_length" value="4.0" />
 
       <!-- Specify if constant altitude flight is required -->
       <param name="constant_altitude" value="true" />
@@ -42,7 +36,7 @@
       <!-- InformedRRT* = kInformedRrtStar -->
       <!-- Probabilistic RoadMap = kPrm -->
       <!-- Bit* = kBitStar -->
-      <param name="planner_type" value="kInformedRrtStar" />
+      <param name="planner_type_" value="kRrtStar" />
 
       <!-- Activate replanning functionality -->
       <param name="activate_replanning" value="true" />
@@ -52,7 +46,7 @@
 
       <!-- Time window for moving ahead along the global path -->
       <!-- Should satisfy  gp_replan_lookahead_sec_>=num_seconds_to_plan-->
-      <param name="gp_replan_lookahead_sec" value="3.0" />
+      <param name="gp_replan_lookahead_sec_" value="3.0" />
 
       <!-- WEIGHTS FOR OPTIMIZATION OBJECTIVE of the form (alpha*LenghtObj + beta*AltitudeObj) -->
       <param name="alpha" value="1.0" />

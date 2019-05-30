@@ -3,7 +3,7 @@
   <arg name="frame_id" default="odom" />
   <arg name="verbose" default="false"/>
   <arg name="voxel_size" default="0.20" />
-  <arg name="robot_radius" default="0.3" />
+  <arg name="robot_radius" default="0.35" />
   <arg name="clear_radius" default="1.0" />
 
   <group ns="$(arg mav_name)">

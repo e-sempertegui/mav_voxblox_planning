@@ -44,7 +44,7 @@ VoxbloxRrtPlanner::VoxbloxRrtPlanner(const ros::NodeHandle& nh,
   nh_private_.param("frame_id", frame_id_, frame_id_);
   nh_private_.param("do_smoothing", do_smoothing_, do_smoothing_);
   nh_private_.param("gp_replan_dt", gp_replan_dt, gp_replan_dt);
-  nh_private_.param("gp_replan_lookahead_sec_", gp_replan_lookahead_sec_, gp_replan_lookahead_sec_);
+  nh_private_.param("gp_replan_lookahead_sec", gp_replan_lookahead_sec_, gp_replan_lookahead_sec_);
   nh_private_.param("activate_replanning", activate_replanning, activate_replanning);
   nh_private_.param("constant_altitude", constant_altitude, constant_altitude);
 
