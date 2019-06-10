@@ -2,8 +2,8 @@
   <arg name="mav_name" default="firefly"/>
   <arg name="frame_id" default="odom" />
   <arg name="verbose" default="false"/>
-  <arg name="voxel_size" default="0.20" />
-  <arg name="robot_radius" default="0.35" />
+  <arg name="voxel_size" default="0.10" />
+  <arg name="robot_radius" default="0.72" />
   <arg name="clear_radius" default="1.0" />
 
   <group ns="$(arg mav_name)">
@@ -12,19 +12,22 @@
       <remap from="voxblox_node/esdf_map_out" to="esdf_map" />
       <remap from="voxblox_node/tsdf_map_out" to="tsdf_map" />
 
+      <param name="update_esdf_every_n_sec" value="0.25" />
+      <param name="publish_map_every_n_sec" value="0.25" />
+
       <param name="method" value="fast" />
       <param name="publish_tsdf_map" value="true" />
       <param name="publish_esdf_map" value="true" />
       <param name="tsdf_voxel_size" value="$(arg voxel_size)" />
       <param name="tsdf_voxels_per_side" value="16" />
-      <param name="esdf_max_distance_m" value="2.0" />
-      <param name="max_ray_length_m" value="10.0" />
+      <param name="esdf_max_distance_m" value="3.0" />
+      <param name="max_ray_length_m" value="5.0" />
       <param name="voxel_carving_enabled" value="true" />
       <param name="color_mode" value="color" />
       <param name="use_tf_transforms" value="true" />
       <param name="update_mesh_every_n_sec" value="0.25" />
       <param name="min_time_between_msgs_sec" value="0.10" />
-      <param name="clear_sphere_for_planning" value="true" />
+      <!-- <param name="clear_sphere_for_planning" value="true" /> -->
 <!-- <<<<<<< HEAD -->
       <!-- <param name="occupied_sphere_radius" value="5.0" /> -->
       <!-- <param name="clear_sphere_radius" value="1.0" /> -->
@@ -56,7 +59,7 @@
       <param name="local_frame_id" value="$(arg frame_id)" />
       <!--<param name="world_frame" value="$(arg frame_id)" /-->
       <param name="global_frame_id" value="$(arg frame_id)" />
-      <param name="replan_dt" value="0.25" />
+      <param name="replan_dt" value="0.50" />
       <param name="command_publishing_dt" value="0.25" />
       <param name="replan_lookahead_sec" value="1.0" />
       <param name="mpc_prediction_horizon" value="300" />
@@ -67,12 +70,12 @@
       <!-- <param name="planning_horizon_m" value="5.0" /> -->
 <!-- ======= -->
       <param name="robot_radius" value="$(arg robot_radius)" />
-      <param name="planning_horizon_m" value="4.0" />
+      <param name="planning_horizon_m" value="20.0" />
 <!-- >>>>>>> master -->
       <param name="autostart" value="true" />
       <param name="verbose" value="true" />
-      <param name="v_max" value="2.0" />
-      <param name="a_max" value="2.0" />
+      <param name="v_max" value="0.8" />
+      <param name="a_max" value="1.0" />
       <param name="avoid_collisions" value="true" />
 
       <!-- What to do in case of failure. -->

@@ -194,7 +194,7 @@ bool VoxbloxLocoPlanner::getTrajectoryBetweenWaypoints(
   }
 
   if (!success){
-    ROS_INFO("NO COLLISION-FREE SOLUTION TO OPTMIZATION PROBLEM!...");
+    ROS_INFO("[Voxblox Loco Planner] NO COLLISION-FREE SOLUTION TO OPTMIZATION PROBLEM!...");
   }
 
   if (verbose_) {
@@ -366,7 +366,8 @@ bool VoxbloxLocoPlanner::getTrajectoryTowardGoal(
                                           shortened_path, trajectory);
 
   // TODO(DEBUG)
-  if (verbose_) {
+  // if (verbose_) {
+  if (false) {
     mav_trajectory_generation::timing::Timing::Print(std::cout);
     voxblox::timing::Timing::Print(std::cout);
   }

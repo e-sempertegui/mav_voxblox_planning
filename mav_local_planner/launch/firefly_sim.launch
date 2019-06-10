@@ -17,8 +17,9 @@
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
     <!-- <arg name="world_name" value="$(arg world_name)" /> -->
     <!-- <arg name="world_name" value="$(find rotors_gazebo)/worlds/empty.world" /> -->
+    <arg name="world_name" value="$(find rotors_gazebo)/worlds/emilk_final_final_T.world" />
     <!-- <arg name="world_name" value="$(find rotors_gazebo)/worlds/emilk_new.world" /> -->
-    <arg name="world_name" value="$(find rotors_gazebo)/worlds/emilk_ceiling_large.world"/>
+    <!-- <arg name="world_name" value="$(find rotors_gazebo)/worlds/emilk_ceiling_large.world"/> -->
     <arg name="debug" value="$(arg debug)" />
     <arg name="paused" value="$(arg paused)" />
     <arg name="gui" value="$(arg gui)" />
