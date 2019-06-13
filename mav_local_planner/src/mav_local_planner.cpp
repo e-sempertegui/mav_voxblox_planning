@@ -31,6 +31,7 @@ MavLocalPlanner::MavLocalPlanner(const ros::NodeHandle& nh,
       recovery_mode_enabled_(false),
       fully_reached_waypoint_(true),
       counter_for_recovery_(0),
+      done_once_(false),
       esdf_server_(nh_, nh_private_),
       loco_planner_(nh_, nh_private_) {
   // Set up some settings.
@@ -102,7 +103,7 @@ MavLocalPlanner::MavLocalPlanner(const ros::NodeHandle& nh,
 
   // Set up recovery yaw policy
   recovery_yaw_policy_.setPhysicalConstraints(constraints_);
-  recovery_yaw_policy_.setYawPolicy(YawPolicy::PolicyType::kPointFacing);
+  recovery_yaw_policy_.setYawPolicy(YawPolicy::PolicyType::kFromPlan);
 
   // Set up smoothers.
   const double voxel_size = esdf_server_.getEsdfMapPtr()->voxel_size();
@@ -337,8 +338,14 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
   // Save success and Trajectory.
   mav_trajectory_generation::Trajectory trajectory;
   bool success = false;
+  double waypoint_heading_angle;
+  double ro;
+  double pitch;
+  double yw;
+  // size_t number_to_substract = static_cast<size_t>(2);
 
   if (!path_queue_.empty()) {
+  // if(false) {
     std::lock_guard<std::recursive_mutex> guard(path_mutex_);
 
     ROS_INFO(
@@ -360,9 +367,10 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
                 std::back_inserter(path_chunk));
       if (path_chunk.size() == 0) {
         path_chunk.push_back(path_queue_.back());
-        if (!nextWaypoint()) {
-          finishWaypoints();
-        }
+        // Remove the below condition or only do it if for a number of times you have only been rotating and can't plan forward...
+        // if (!nextWaypoint()) {
+          // finishWaypoints();
+        // }
       }
     }
 
@@ -379,59 +387,96 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
             "[Mav Local Planner][Plan Step] Current plan is valid, just "
             "rollin' with it.");
         fully_reached_waypoint_ = 1;
-        nextWaypoint();
+        // ONlY PLAN FOR THE NEXT WAYPOINT IF YOU ARE CLOSE ENOUGH
+        if ((odometry_.position_W - waypoint.position_W).norm() < 0.5){
+          bool next_point = nextWaypoint();
+          // // Only problem with this is that it doesn't exactly get to the intermediate waypoints
+          // // PLUS it does start planning from the beggining (smoothing) as there is path_queue_ is empty
+          // // iin planning_step() loop
+          // // TRY with flags to know in which time (first or replanning) you are atm
+          // if (next_point) {
+          //   path_queue_.clear();
+          //   path_index_ = 0;
+          // }
+
+        }
+        // nextWaypoint();
         return;
       }
     }
-    // Otherwise we gotta replan this thing anyway.
-    success = loco_planner_.getTrajectoryTowardGoal(path_chunk.front(),
-                                                    waypoint, &trajectory);
-    if (!success) {
-      fully_reached_waypoint_ = 0;
-      if (path_chunk_collision_free) {
-        ROS_INFO(
-            "[Mav Local Planner][Plan Step] Couldn't find a solution :( "
-            "Continuing existing solution.");
-        // TODO: The problem I thought of this routine happing more than 4 times because the waypoint
-        // is too far can be avoided if the branch lenght parameter is reduced (what Luca recommended) 
-      } else {
-        ROS_INFO(
-            "[Mav Local Planner][Plan Step] ABORTING! No local solution "
-            "found.");
-        // TODO(helenol): which order to abort in?
-        abort();
-        dealWithFailure();
-      }
-      return;
-    } else {
-      ROS_INFO("[Mav Local Planner][Plan Step] Appending new path chunk.");
-      fully_reached_waypoint_ = 1;
-      // Reduce the number below to ensure the MAV gets closer to the current waypoint it is 
-      // flying towards before planning to the next one
-      if (trajectory.getMaxTime() <= 1e-6) {
-        nextWaypoint();
-      } else {
-        num_failures_ = 0;
-        mav_msgs::EigenTrajectoryPointVector new_path_chunk;
-        mav_trajectory_generation::sampleWholeTrajectory(
-            trajectory, constraints_.sampling_dt, &new_path_chunk);
 
-        retimeTrajectoryWithStartTimeAndDt(
-            path_chunk.front().time_from_start_ns, kDtNs, &new_path_chunk);
+    // if robot orientation close to desired heading proceed with replanning
+    // else return (repeat and try again next iteration)
+    toEulerAngle(odometry_.orientation_W_B, ro, pitch, yw);
+    double desired_heading = compute_heading(waypoint);
+    // double yaw_difference = computeYawDifference(yw, desired_heading);
+    if (std::abs(yw - desired_heading) < 25*(M_PI/180)) {
 
-        new_path_chunk.front().orientation_W_B =
-            path_chunk.front().orientation_W_B;
-        yaw_policy_.applyPolicyInPlace(&new_path_chunk);
-
-        // Remove what was in the trajectory before.
-        if (replan_start_index < path_queue_.size()) {
-          path_queue_.erase(path_queue_.begin() + replan_start_index,
-                            path_queue_.end());
+      // Otherwise we gotta replan this thing anyway.
+      success = loco_planner_.getTrajectoryTowardGoal(path_chunk.front(),
+                                                      waypoint, &trajectory);
+      if (!success) {
+        fully_reached_waypoint_ = 0;
+        if (path_chunk_collision_free) {
+          ROS_INFO(
+              "[Mav Local Planner][Plan Step] Couldn't find a solution :( "
+              "Continuing existing solution.");
+          // TODO: The problem I thought of this routine happing more than 4 times because the waypoint
+          // is too far can be avoided if the branch lenght parameter is reduced (what Luca recommended) 
+        } else {
+          ROS_INFO(
+              "[Mav Local Planner][Plan Step] ABORTING! No local solution "
+              "found.");
+          // TODO(helenol): which order to abort in?
+          abort();
+          dealWithFailure();
         }
-        // Stick the new one in.
-        path_queue_.insert(path_queue_.end(), new_path_chunk.begin(),
-                           new_path_chunk.end());
+        return;
+      } else {
+        ROS_INFO("[Mav Local Planner][Plan Step] Appending new path chunk.");
+        fully_reached_waypoint_ = 1;
+        // Reduce the number below to ensure the MAV gets closer to the current waypoint it is 
+        // flying towards before planning to the next one
+        if (trajectory.getMaxTime() <= 1e-6) {
+          if ((odometry_.position_W - waypoint.position_W).norm() < 0.5){
+            nextWaypoint();
+          }
+          else {
+            faceToWaypoint(waypoint, waypoint_heading_angle);
+          }
+          // nextWaypoint();
+        } else {
+          num_failures_ = 0;
+          mav_msgs::EigenTrajectoryPointVector new_path_chunk;
+          mav_trajectory_generation::sampleWholeTrajectory(
+              trajectory, constraints_.sampling_dt, &new_path_chunk);
+
+          retimeTrajectoryWithStartTimeAndDt(
+              path_chunk.front().time_from_start_ns, kDtNs, &new_path_chunk);
+
+          new_path_chunk.front().orientation_W_B =
+              path_chunk.front().orientation_W_B;
+          yaw_policy_.applyPolicyInPlace(&new_path_chunk);
+
+          // Remove what was in the trajectory before.
+          if (replan_start_index < path_queue_.size()) {
+            path_queue_.erase(path_queue_.begin() + replan_start_index,
+                              path_queue_.end());
+          }
+          // Stick the new one in.
+          path_queue_.insert(path_queue_.end(), new_path_chunk.begin(),
+                             new_path_chunk.end());
+        }
       }
+    } else {
+      // if (current_waypoint_ <= 1){
+      faceToWaypoint(waypoint, waypoint_heading_angle);
+      // }
+      // path_index_ -= number_to_substract;
+      // NO NEED ANYMORE TO INCREASE PATH QUEUE AS faceToWaypoint() is now increasing it
+      // without problem
+      // increasePathQueue();
+
     }
   } else {
     ROS_INFO("[Mav Local Planner][Plan Step] Trying to plan from scratch.");
@@ -451,37 +496,58 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
       }
     }
 
-    success = loco_planner_.getTrajectoryTowardGoal(current_point, waypoint,
-                                                    &trajectory);
-    ROS_INFO("[Mav Local Planner][Plan Step] Planning success? %d", success);
+    // if (!done_once_){
+    //   //Correct heading before you plan to the waypoint
+    //   faceToWaypoint(waypoint, waypoint_heading_angle);
+    //   done_once_ = 1;
+    //   // startPublishingCommands();
+    //   toEulerAngle(current_point.orientation_W_B,ro,pitch,yw);
+    // }
+    //Correct heading before you plan to the waypoint
+    faceToWaypoint(waypoint, waypoint_heading_angle);
+    // done_once_ = 1;
+    // startPublishingCommands();
+    toEulerAngle(current_point.orientation_W_B,ro,pitch,yw);
 
-    if (success) {
-      if (trajectory.getMaxTime() <= 0.1) {
-        nextWaypoint();
+    // if (false) {
+
+    if (std::abs(yw - waypoint_heading_angle) < 10*(M_PI/180) ){// abs(robot orientation - goal orientation) <= 8degrees
+      ROS_INFO("[Mav Local Planner][Plan Step] LOCO planner execution!...");
+      // then allow to plan to new waypoint
+      // else return and repeat process to the same waypoint
+
+      success = loco_planner_.getTrajectoryTowardGoal(current_point, waypoint,
+                                                      &trajectory);
+      ROS_INFO("[Mav Local Planner][Plan Step] Planning success? %d", success);
+
+      if (success) {
+        if (trajectory.getMaxTime() <= 0.1) {
+          nextWaypoint();
+        } else {
+          // Copy this straight into the queue.
+          num_failures_ = 0;
+          mav_msgs::EigenTrajectoryPointVector path;
+          mav_trajectory_generation::sampleWholeTrajectory(
+              trajectory, constraints_.sampling_dt, &path);
+          replacePath(path);
+        }
       } else {
-        // Copy this straight into the queue.
-        num_failures_ = 0;
-        mav_msgs::EigenTrajectoryPointVector path;
-        mav_trajectory_generation::sampleWholeTrajectory(
-            trajectory, constraints_.sampling_dt, &path);
-        replacePath(path);
+  // <<<<<<< HEAD
+        // num_failures_++;
+        // if (num_failures_ > max_failures_) {
+          // current_waypoint_ = -1;
+        // }
+        
+        // ADDED PLOTTING ALSO FOR NON SUCCESFUL PATH
+        // ROS_INFO("PLOTTING NON COLLISION-FREE PATH...");
+        // mav_msgs::EigenTrajectoryPointVector path;
+        // mav_trajectory_generation::sampleWholeTrajectory(trajectory, constraints_.sampling_dt, &path);
+        // replacePath(path);
+  // =======
+        // fully_reached_waypoint_ = 0;
+        dealWithFailure();
+  // >>>>>>> master
       }
-    } else {
-// <<<<<<< HEAD
-      // num_failures_++;
-      // if (num_failures_ > max_failures_) {
-        // current_waypoint_ = -1;
-      // }
-      
-      // ADDED PLOTTING ALSO FOR NON SUCCESFUL PATH
-      // ROS_INFO("PLOTTING NON COLLISION-FREE PATH...");
-      // mav_msgs::EigenTrajectoryPointVector path;
-      // mav_trajectory_generation::sampleWholeTrajectory(trajectory, constraints_.sampling_dt, &path);
-      // replacePath(path);
-// =======
-      // fully_reached_waypoint_ = 0;
-      dealWithFailure();
-// >>>>>>> master
     }
   }
 }
@@ -515,6 +581,7 @@ bool MavLocalPlanner::planPathThroughWaypoints(
 
 bool MavLocalPlanner::nextWaypoint() {
   if (current_waypoint_ >= static_cast<int64_t>(waypoints_.size()) - 1) {
+    // WHY THERE'S NO TYPE CASTING NEEDED FOR THE .size() BELOW???
     current_waypoint_ = waypoints_.size() - 1;
     return false;
   } else {
@@ -524,7 +591,7 @@ bool MavLocalPlanner::nextWaypoint() {
 }
 
 void MavLocalPlanner::finishWaypoints() {
-  current_waypoint_ = waypoints_.size();
+  current_waypoint_ = waypoints_.size()-1;
 }
 
 void MavLocalPlanner::replacePath(
@@ -813,5 +880,153 @@ void MavLocalPlanner::RecoveryMode(){
     abort_executed_ = 0;   // Reset the flag
   }
 }
+// TODO: Revise this function as this is the one that is giving me the problem when planning
+// for multiple waypoints.
+void MavLocalPlanner::faceToWaypoint(mav_msgs::EigenTrajectoryPoint& waypoint, double& my_yaw){
+ROS_INFO("[Mav Local Planner][Facing to current waypoint] Routine on execution");
+
+  mav_msgs::EigenTrajectoryPointVector rotation_to_waypoint;
+
+  mav_msgs::EigenTrajectoryPoint initial_point;
+  mav_msgs::EigenTrajectoryPoint final_point;
+
+  // ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Tracking waypoint: "
+  //                   << waypoint.position_W.transpose());
+
+  // recovery_yaw_policy_.setFacingPoint(waypoint.position_W);
+
+  // ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Waypoint stored in class: "
+  //                   << recovery_yaw_policy_.getFacingPoint().transpose());
+
+  // if (!path_queue_.empty()){
+  //   // Get last element from the queue as initial position and orientation for rotation to waypoint
+  //     mav_msgs::EigenTrajectoryPoint last_element_path_queue = *(path_queue_.end()-static_cast<size_t>(1));
+  //     initial_point.position_W = last_element_path_queue.position_W;
+  //     initial_point.orientation_W_B = last_element_path_queue.orientation_W_B;
+  // } else {
+  //   // Otherwise get the best thing we can, i.e. the odometry!
+  //     initial_point.position_W = odometry_.position_W;
+  //     initial_point.orientation_W_B = odometry_.orientation_W_B;
+  // }
+
+  initial_point.position_W = odometry_.position_W;
+  initial_point.orientation_W_B = odometry_.orientation_W_B;
+  rotation_to_waypoint.push_back(initial_point);
+
+  // Compute heading/yaw to face waypoint
+  my_yaw = compute_heading(waypoint);
+
+  final_point.position_W = initial_point.position_W;
+  final_point.orientation_W_B = toQuaternion(my_yaw, 0.0, 0.0);
+  rotation_to_waypoint.push_back(final_point);
+
+  recovery_yaw_policy_.applyPolicyInPlace(&rotation_to_waypoint);
+
+  // THe clear() method below was clearing my queue in the 2nd iteration!!! so path_idx was 
+  // always the at the end of the path and controller was not triggered again
+  // path_queue_.clear();
+
+  // ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Path Queue Size Before: "
+  //                   << path_queue_.size());
+
+  path_queue_.insert(path_queue_.end(), rotation_to_waypoint.begin(),
+                      rotation_to_waypoint.end());
+
+  // ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Path Queue Size After: "
+  //                   << path_queue_.size());
+
+  // ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Path Queue Element 0 "
+  //                 " Position: "
+  //                   << path_queue_[0].position_W.transpose());
+
+  // ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Path Queue Element 0 "
+  //                 " Orientation: "
+  //                   << path_queue_[0].orientation_W_B.coeffs());
+
+  // ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Path Queue Element 1 "
+  //                 " Position: "
+  //                   << path_queue_[1].position_W.transpose());
+
+  // ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Path Queue Element 1 "
+  //                 " Orientation: "
+  //                   << path_queue_[1].orientation_W_B.coeffs());
+
+}
+
+Eigen::Quaterniond MavLocalPlanner::toQuaternion( double yaw, double pitch, double roll) // yaw (Z), pitch (Y), roll (X)
+{
+    // Abbreviations for the various angular functions
+    double cy = cos(yaw * 0.5);
+    double sy = sin(yaw * 0.5);
+    double cp = cos(pitch * 0.5);
+    double sp = sin(pitch * 0.5);
+    double cr = cos(roll * 0.5);
+    double sr = sin(roll * 0.5);
+
+    Eigen::Quaterniond q;
+    q.w() = cy * cp * cr + sy * sp * sr;
+    q.x() = cy * cp * sr - sy * sp * cr;
+    q.y() = sy * cp * sr + cy * sp * cr;
+    q.z() = sy * cp * cr - cy * sp * sr;
+    return q;
+}
+
+void MavLocalPlanner::toEulerAngle(const Eigen::Quaterniond& q, double& roll, double& pitch, double& yaw)
+{
+  // roll (x-axis rotation)
+  double sinr_cosp = +2.0 * (q.w() * q.x() + q.y() * q.z());
+  double cosr_cosp = +1.0 - 2.0 * (q.x() * q.x() + q.y() * q.y());
+  roll = atan2(sinr_cosp, cosr_cosp);
+
+  // pitch (y-axis rotation)
+  double sinp = +2.0 * (q.w() * q.y() - q.z() * q.x());
+  if (fabs(sinp) >= 1)
+    pitch = copysign(M_PI / 2, sinp); // use 90 degrees if out of range
+  else
+    pitch = asin(sinp);
+
+  // yaw (z-axis rotation)
+  double siny_cosp = +2.0 * (q.w() * q.z() + q.x() * q.y());
+  double cosy_cosp = +1.0 - 2.0 * (q.y() * q.y() + q.z() * q.z());  
+  yaw = atan2(siny_cosp, cosy_cosp);
+}
+
+double MavLocalPlanner::compute_heading(mav_msgs::EigenTrajectoryPoint& waypoint){
+  // Compute heading/yaw to face waypoint
+
+  mav_msgs::EigenTrajectoryPoint initial_point;
+  initial_point.position_W = odometry_.position_W;
+  initial_point.orientation_W_B = odometry_.orientation_W_B;
+
+  Eigen::Vector3d direction_to_waypoint = waypoint.position_W - initial_point.position_W;
+  double my_yaw = 0.0;
+  if (std::abs(direction_to_waypoint.x()) > 1e-4 ||
+      std::abs(direction_to_waypoint.y()) > 1e-4) {
+    my_yaw = atan2(direction_to_waypoint.y(),direction_to_waypoint.x());
+  }
+
+  return my_yaw;
+
+}
+
+void MavLocalPlanner::increasePathQueue(){
+  // Increase size of path_queue_ vector with the last element of the vector
+  ROS_INFO("[Mav Local Planner][Increase Path Queue] Increasing path queue so controller thread triggers... ");
+  // std::vector<mav_msgs::EigenTrajectoryPoint>::iterator it;
+  // it = path_queue_.end()-static_cast<size_t>(1);
+  path_queue_.insert(path_queue_.end(), 10,*(path_queue_.end()-static_cast<size_t>(1)));
+
+  ROS_INFO_STREAM("[Mav Local Planner][Increase Path Queue] Path queue size = "
+                    << path_queue_.size() << "   Current path index = " << path_index_ );
+    // it);
+}
+
+// double MavLocalPlanner::computeYawDifference(double& yaw, double& desired_heading){
+//   double delta_yaw = fmod(desired_heading - yaw, 2*M_PI);
+//   // TODO: Check if the angles arg you receive (both computed with atan2) return values between
+//   // -pi to pi, and if so adjust modulo args so that the remainder falls as you want.
+//   // Maybe it is not even needed???
+// }
+
 
 }  // namespace mav_planning

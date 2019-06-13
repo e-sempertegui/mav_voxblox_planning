@@ -59,7 +59,7 @@
       <param name="local_frame_id" value="$(arg frame_id)" />
       <!--<param name="world_frame" value="$(arg frame_id)" /-->
       <param name="global_frame_id" value="$(arg frame_id)" />
-      <param name="replan_dt" value="0.50" />
+      <param name="replan_dt" value="0.5" />
       <param name="command_publishing_dt" value="0.25" />
       <param name="replan_lookahead_sec" value="1.0" />
       <param name="mpc_prediction_horizon" value="300" />

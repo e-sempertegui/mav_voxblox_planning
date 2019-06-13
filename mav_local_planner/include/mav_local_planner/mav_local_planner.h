@@ -101,6 +101,17 @@ class MavLocalPlanner {
   //Recovery mode changing to a goal-viewing orientation/
   void RecoveryMode(); 
 
+  // Rotates to face the waypoint currently tracked 
+  void faceToWaypoint(mav_msgs::EigenTrajectoryPoint& waypoint, double& my_yaw);
+
+  Eigen::Quaterniond toQuaternion(double yaw, double pitch, double roll);
+
+  void toEulerAngle(const Eigen::Quaterniond& q, double& roll, double& pitch, double& yaw);
+
+  double compute_heading(mav_msgs::EigenTrajectoryPoint& waypoint);
+
+  void increasePathQueue();
+
   ros::NodeHandle nh_;
   ros::NodeHandle nh_private_;
 
@@ -205,6 +216,8 @@ class MavLocalPlanner {
   bool recovery_mode_enabled_;
   bool fully_reached_waypoint_;  // In a planning sense, is possible that not really fisically yet
   int counter_for_recovery_;
+
+  bool done_once_;
 };
 
 }  // namespace mav_planning
