@@ -332,7 +332,7 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
     return;
   }
   mav_msgs::EigenTrajectoryPoint waypoint = waypoints_[current_waypoint_];
-  const double kCloseEnough = 0.05;
+  const double kCloseEnough = 0.10;
 
   const int64_t kDtNs =
       mav_msgs::secondsToNanoseconds(constraints_.sampling_dt);
@@ -529,6 +529,7 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
         kCloseEnough) {
       if (nextWaypoint()) {
         waypoint = waypoints_[current_waypoint_];
+        ROS_INFO("TRACKING WAYPOINT = %d", current_waypoint_);  
       } else {
         return;
       }
