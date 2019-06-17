@@ -32,6 +32,8 @@ MavLocalPlanner::MavLocalPlanner(const ros::NodeHandle& nh,
       fully_reached_waypoint_(true),
       counter_for_recovery_(0),
       done_once_(false),
+      planning_forward_(false),
+      number_of_attempts_(0),
       esdf_server_(nh_, nh_private_),
       loco_planner_(nh_, nh_private_) {
   // Set up some settings.
@@ -73,6 +75,9 @@ MavLocalPlanner::MavLocalPlanner(const ros::NodeHandle& nh,
   full_trajectory_pub_ =
       nh_private_.advertise<trajectory_msgs::MultiDOFJointTrajectory>(
           "full_trajectory", 1, true);
+
+  debug_pub_ = nh_.advertise<trajectory_msgs::MultiDOFJointTrajectory>(
+      "path_queue_elements", 1);
 
   // Services.
   start_srv_ = nh_private_.advertiseService(
@@ -248,7 +253,7 @@ void MavLocalPlanner::planningStep() {
     } else {
       ROS_ERROR("[Mav Local Planner] Waypoint planning failed!");
     }
-  } else if (path_queue_.empty()) {
+  } else if (path_queue_.empty() && (current_waypoint_ == 0)) {
     // First check how many waypoints we haven't covered yet are in free space.
     mav_msgs::EigenTrajectoryPointVector free_waypoints;
     // Do we need the odometry in here? Let's see.
@@ -283,26 +288,28 @@ void MavLocalPlanner::planningStep() {
       // Okay whatever just search for the first waypoint.
       success = false;
     } else {
-      // There is some hope! Maybe we can do path smoothing on these guys.
-      mav_msgs::EigenTrajectoryPointVector path;
-      success = planPathThroughWaypoints(free_waypoints, &path);
-      if (success) {
-        ROS_INFO(
-            "[Mav Local Planner]  Successfully planned path through %zu free "
-            "waypoints.",
-            free_waypoints.size());
-        success = isPathCollisionFree(path);
+      if (free_waypoints.size() == waypoints_.size()) {
+        // There is some hope! Maybe we can do path smoothing on these guys.
+        mav_msgs::EigenTrajectoryPointVector path;
+        success = planPathThroughWaypoints(free_waypoints, &path);
         if (success) {
-          replacePath(path);
-          current_waypoint_ = std::min(free_waypoints.size() - waypoints_added,
-                                       waypoints_.size() - 1);
           ROS_INFO(
-              "[Mav Local Planner] Used smoothing through %zu waypoints! Total "
-              "waypoint size: %zu, current point: %zd, added? %d",
-              free_waypoints.size(), waypoints_.size(), current_waypoint_,
-              waypoints_added);
-        } else {
-          ROS_WARN("[Mav Local Planner] But path was not collision free. :(");
+              "[Mav Local Planner]  Successfully planned path through %zu free "
+              "waypoints.",
+              free_waypoints.size());
+          success = isPathCollisionFree(path);
+          if (success) {
+            replacePath(path);
+            current_waypoint_ = std::min(free_waypoints.size() - waypoints_added,
+                                         waypoints_.size() - 1);
+            ROS_INFO(
+                "[Mav Local Planner] Used smoothing through %zu waypoints! Total "
+                "waypoint size: %zu, current point: %zd, added? %d",
+                free_waypoints.size(), waypoints_.size(), current_waypoint_,
+                waypoints_added);
+          } else {
+            ROS_WARN("[Mav Local Planner] But path was not collision free. :(");
+          }
         }
       }
     }
@@ -343,6 +350,8 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
   double pitch;
   double yw;
   // size_t number_to_substract = static_cast<size_t>(2);
+
+  number_of_attempts_++;
 
   if (!path_queue_.empty()) {
   // if(false) {
@@ -387,17 +396,23 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
             "[Mav Local Planner][Plan Step] Current plan is valid, just "
             "rollin' with it.");
         fully_reached_waypoint_ = 1;
-        // ONlY PLAN FOR THE NEXT WAYPOINT IF YOU ARE CLOSE ENOUGH
+        number_of_attempts_ = 0;
+        // ONlY PLAN FOR THE NEXT WAYPOINT IF YOU ARE CLOSE ENOUGH or if you exceed max number of 
+        // attemps to reach previous waypoint
         if ((odometry_.position_W - waypoint.position_W).norm() < 0.5){
           bool next_point = nextWaypoint();
           // // Only problem with this is that it doesn't exactly get to the intermediate waypoints
           // // PLUS it does start planning from the beggining (smoothing) as there is path_queue_ is empty
           // // iin planning_step() loop
           // // TRY with flags to know in which time (first or replanning) you are atm
-          // if (next_point) {
-          //   path_queue_.clear();
-          //   path_index_ = 0;
-          // }
+          if (next_point) {
+            path_queue_.clear();
+            path_index_ = 0;
+            planning_forward_ = 0;
+            // number_of_attempts_ = 0;
+          } else {
+            ROS_INFO("[Mav Local Planner][Plan Step] Goal (Final Waypoint) reached!...");
+          }
 
         }
         // nextWaypoint();
@@ -415,12 +430,29 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
       // Otherwise we gotta replan this thing anyway.
       success = loco_planner_.getTrajectoryTowardGoal(path_chunk.front(),
                                                       waypoint, &trajectory);
+      planning_forward_ = 1;
       if (!success) {
         fully_reached_waypoint_ = 0;
         if (path_chunk_collision_free) {
           ROS_INFO(
               "[Mav Local Planner][Plan Step] Couldn't find a solution :( "
               "Continuing existing solution.");
+          if (number_of_attempts_ > 10) {
+            bool next_point = nextWaypoint();
+
+            if (next_point) {
+              path_queue_.clear();
+              path_index_ = 0;
+              planning_forward_ = 0;
+              // Reset counter for attempts to reach the same waypoint
+              number_of_attempts_ = 0;
+            } else {
+              ROS_INFO("[Mav Local Planner][Plan Step] Goal unreachable! No more waypoints to track, shutting "
+                        "local planner down...");
+              planning_timer_.stop();
+              return;
+            }
+          }
           // TODO: The problem I thought of this routine happing more than 4 times because the waypoint
           // is too far can be avoided if the branch lenght parameter is reduced (what Luca recommended) 
         } else {
@@ -470,6 +502,12 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
       }
     } else {
       // if (current_waypoint_ <= 1){
+      // if (path_queue_.)
+      if (planning_forward_){
+        path_queue_.clear();
+        path_index_ = 0;
+        planning_forward_ = 0;
+      }
       faceToWaypoint(waypoint, waypoint_heading_angle);
       // }
       // path_index_ -= number_to_substract;
@@ -883,7 +921,9 @@ void MavLocalPlanner::RecoveryMode(){
 // TODO: Revise this function as this is the one that is giving me the problem when planning
 // for multiple waypoints.
 void MavLocalPlanner::faceToWaypoint(mav_msgs::EigenTrajectoryPoint& waypoint, double& my_yaw){
-ROS_INFO("[Mav Local Planner][Facing to current waypoint] Routine on execution");
+  ROS_INFO("[Mav Local Planner][Facing to current waypoint] Routine on execution");
+
+  std::lock_guard<std::recursive_mutex> guard(path_mutex_);
 
   mav_msgs::EigenTrajectoryPointVector rotation_to_waypoint;
 
@@ -898,19 +938,23 @@ ROS_INFO("[Mav Local Planner][Facing to current waypoint] Routine on execution")
   // ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Waypoint stored in class: "
   //                   << recovery_yaw_policy_.getFacingPoint().transpose());
 
-  // if (!path_queue_.empty()){
-  //   // Get last element from the queue as initial position and orientation for rotation to waypoint
-  //     mav_msgs::EigenTrajectoryPoint last_element_path_queue = *(path_queue_.end()-static_cast<size_t>(1));
-  //     initial_point.position_W = last_element_path_queue.position_W;
-  //     initial_point.orientation_W_B = last_element_path_queue.orientation_W_B;
-  // } else {
-  //   // Otherwise get the best thing we can, i.e. the odometry!
-  //     initial_point.position_W = odometry_.position_W;
-  //     initial_point.orientation_W_B = odometry_.orientation_W_B;
-  // }
+  if (!path_queue_.empty()){
+    // Get last element from the queue as initial position and orientation for rotation to waypoint
+      mav_msgs::EigenTrajectoryPoint last_element_path_queue = *(path_queue_.end()-static_cast<size_t>(1));
+      initial_point.position_W = last_element_path_queue.position_W;
+      initial_point.orientation_W_B = last_element_path_queue.orientation_W_B;
+  } else {
+    // Otherwise get the best thing we can, i.e. the odometry!
+      initial_point.position_W = odometry_.position_W;
+      initial_point.orientation_W_B = odometry_.orientation_W_B;
+  }
 
-  initial_point.position_W = odometry_.position_W;
-  initial_point.orientation_W_B = odometry_.orientation_W_B;
+  trajectory_msgs::MultiDOFJointTrajectory msg;
+  msgMultiDofJointTrajectoryFromEigen(initial_point, &msg);
+  debug_pub_.publish(msg);
+
+  // initial_point.position_W = odometry_.position_W;
+  // initial_point.orientation_W_B = odometry_.orientation_W_B;
   rotation_to_waypoint.push_back(initial_point);
 
   // Compute heading/yaw to face waypoint
@@ -926,14 +970,14 @@ ROS_INFO("[Mav Local Planner][Facing to current waypoint] Routine on execution")
   // always the at the end of the path and controller was not triggered again
   // path_queue_.clear();
 
-  // ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Path Queue Size Before: "
-  //                   << path_queue_.size());
+  ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Path Queue Size Before: "
+                    << path_queue_.size());
 
   path_queue_.insert(path_queue_.end(), rotation_to_waypoint.begin(),
                       rotation_to_waypoint.end());
 
-  // ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Path Queue Size After: "
-  //                   << path_queue_.size());
+  ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Path Queue Size After: "
+                    << path_queue_.size());
 
   // ROS_INFO_STREAM("[Mav Local Planner][Facing to current waypoint] Path Queue Element 0 "
   //                 " Position: "

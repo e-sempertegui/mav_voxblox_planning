@@ -124,6 +124,7 @@ class MavLocalPlanner {
   ros::Publisher command_pub_;
   ros::Publisher path_marker_pub_;
   ros::Publisher full_trajectory_pub_;
+  ros::Publisher debug_pub_;
 
   // Service calls for controlling the local planner.
   // Start will start publishing commands, pause will stop temporarily and you
@@ -218,6 +219,9 @@ class MavLocalPlanner {
   int counter_for_recovery_;
 
   bool done_once_;
+  bool planning_forward_;
+
+  int number_of_attempts_;
 };
 
 }  // namespace mav_planning

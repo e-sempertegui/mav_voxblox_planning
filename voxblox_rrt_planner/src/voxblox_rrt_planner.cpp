@@ -27,11 +27,16 @@ VoxbloxRrtPlanner::VoxbloxRrtPlanner(const ros::NodeHandle& nh,
       gp_spinner_(1, &gp_queue_),
       path_idx(0),
       old_path_idx(0),
+      num_waypoints_(0),
+      waypoints_added_(0),
+      // saved_idx(0),
       // able_to_plan(true),
       // counter(0),
+      start_pose_valid_(true),
       init_pose_adjust_counter(0),
       replanning(false),
       activate_replanning(false),
+      first_time_occupied_(true),
       voxblox_server_(nh_, nh_private_),
       rrt_(nh_, nh_private_) {
   constraints_.setParametersFromRos(nh_private_);
@@ -47,6 +52,7 @@ VoxbloxRrtPlanner::VoxbloxRrtPlanner(const ros::NodeHandle& nh,
   nh_private_.param("gp_replan_lookahead_sec", gp_replan_lookahead_sec_, gp_replan_lookahead_sec_);
   nh_private_.param("activate_replanning", activate_replanning, activate_replanning);
   nh_private_.param("constant_altitude", constant_altitude, constant_altitude);
+  nh_private_.param("num_waypoints", num_waypoints_, num_waypoints_);
 
   //Publishers and odometry subscriber
   gp_odometry_sub_ = nh_.subscribe(mav_msgs::default_topics::ODOMETRY, 1,
@@ -227,10 +233,10 @@ void VoxbloxRrtPlanner::replanningRoutine(){
   mav_msgs::EigenTrajectoryPoint predicted_previous_pose;
 
   // Constants for adjusting estimated robot position (w.r.t. global path)
-  constexpr double kCloseToOdometry = 3;
+  double CloseToOdometry = 1.0;
   constexpr double kPosesDistance = 0.03;   // How close poses need to be in order to consider them equal
-  constexpr int kMaxFailureIterations = 7;
-  constexpr int kSecondsInMotion = 5;  // must satisfy: kSecondsInMotion > num_seconds_to_plan + gp_replan_dt 
+  constexpr int kMaxFailureIterations = 10;
+  constexpr int kSecondsInMotion = 3;  // must satisfy: kSecondsInMotion > num_seconds_to_plan + gp_replan_dt 
   const size_t step_size = 25;
 
   // (Over)Estimate current location in global trajectory (vector) w.r.t beginning of trajectory
@@ -242,20 +248,77 @@ void VoxbloxRrtPlanner::replanningRoutine(){
   }
   else{
     path_idx += static_cast<size_t>((gp_replan_dt + 0.5)/constraints_.sampling_dt);
-    ROS_INFO("[DEBUGGING] Using timer_dt to estimate location...");
+    // ROS_INFO("[DEBUGGING] Using timer_dt to estimate location...");
   }
   // path_idx += static_cast<size_t>((kSecondsInMotion)/constraints_.sampling_dt);
   ROS_INFO("[DEBUGGING] path_idx = %d     global_path_size= %d", path_idx, global_path.size());
   mav_msgs::EigenTrajectoryPoint predicted_current_pose = *(global_path.begin() + path_idx);
 
-  // Remap(pull) path idx to the inside of the sphere
-  while ((odometry_.position_W - predicted_current_pose.position_W).norm() > 
-          kCloseToOdometry){
-    ROS_INFO("[REPLANNING ROUTINE] Readjusting path idx...");
-    path_idx -= step_size;  //TODO: take care with what happens if norm is greater but because robot moved to fast so estimated pose is far behind
-    predicted_current_pose = *(global_path.begin() + path_idx);
-    ROS_INFO("[DEBUGGING] path_idx = %d", path_idx);
+  // Copy overestimation of robot location into variable that will be adjusted
+  // for a more sensible estimate
+  size_t modified_path_idx = path_idx;
+
+  // When planning and start pose is not valid then reduce the CloseToOdometry distance 
+  // threshold and use the odometry from the time when the replanning pose was not valid 
+  // so the comparsion below is not affected by the motion of the robot due to local planner
+  if (!start_pose_valid_){
+    CloseToOdometry -= 0.5;
+    ROS_INFO("[DEBUGGING] Reducing the CloseToOdometry Constant : %f", CloseToOdometry);
+    start_pose_valid_ = 1;
+    point_to_compare_ = saved_odometry_;
   }
+  else{
+    point_to_compare_.position_W = odometry_.position_W;
+    point_to_compare_.orientation_W_B = odometry_.orientation_W_B;
+    CloseToOdometry = 1.0;
+    first_time_occupied_ = 1;
+  }
+
+  // Statements below avoid issue when CloseToOdometry was reduced to ~ 0
+  if (CloseToOdometry < 1e-4){
+
+    CloseToOdometry = 0.5;
+
+    // Remap(pull) path idx to the inside of the sphere
+    while ((point_to_compare_.position_W - predicted_current_pose.position_W).norm() > 
+            CloseToOdometry){
+      ROS_INFO("[REPLANNING ROUTINE] Readjusting path idx...");
+      modified_path_idx -= step_size;  //TODO: take care with what happens if norm is greater but because robot moved to fast so estimated pose is far behind
+      if (modified_path_idx <= static_cast<size_t>(0)){
+        modified_path_idx = path_idx - static_cast<size_t>(10);
+        predicted_current_pose = *(global_path.begin() + modified_path_idx);
+        ROS_INFO("[DEBUGGING] Setting new path_idx as overestimated index = %d", modified_path_idx);
+        break;
+      }
+      predicted_current_pose = *(global_path.begin() + modified_path_idx);
+      ROS_INFO("[DEBUGGING] New path_idx = %d", modified_path_idx);
+    }
+    replan_start_idx = modified_path_idx;
+
+  } else {
+    // Remap(pull) path idx to the inside of the sphere
+    while ((point_to_compare_.position_W - predicted_current_pose.position_W).norm() > 
+            CloseToOdometry){
+      ROS_INFO("[REPLANNING ROUTINE] Readjusting path idx...");
+      modified_path_idx -= step_size;  //TODO: take care with what happens if norm is greater but because robot moved to fast so estimated pose is far behind
+      if (modified_path_idx <= static_cast<size_t>(0)){
+        modified_path_idx = path_idx - static_cast<size_t>(10);
+        predicted_current_pose = *(global_path.begin() + modified_path_idx);
+        ROS_INFO("[DEBUGGING] Setting new path_idx as overestimated index = %d", modified_path_idx);
+        break;
+      }
+      predicted_current_pose = *(global_path.begin() + modified_path_idx);
+      ROS_INFO("[DEBUGGING] path_idx = %d", modified_path_idx);
+    }
+    // Take min to avoid overflow when path_idx is close to last waypoint in the trajectory
+    replan_start_idx = std::min(modified_path_idx + static_cast<size_t>((gp_replan_lookahead_sec_)/
+                                                      constraints_.sampling_dt),
+                              global_path.size());
+  }
+
+
+
+  // predicted_current_pose = *(global_path.begin() + path_idx);
 
   // If the prediction of the pose in the current replanning iteration is 'close' to
   // the predicted pose of the previous iteration increase counter as robot probably has not
@@ -279,22 +342,24 @@ void VoxbloxRrtPlanner::replanningRoutine(){
     return;
   }
 
+  // if (!start_pose_valid_){
+  //   path_idx -= 
+  // }
+
   // Save current path idx as old path idx (i.e. current pose as old pose)
-  old_path_idx = path_idx;
+  old_path_idx = modified_path_idx;
+  // Update path_idx so that it is a more accurate estimate for the next iteration
+  path_idx = modified_path_idx;
 
   // Reset the counter (NOT NEEDED ANYMORE)
   // counter = 0;
 
-  // Take min to avoid overflow when path_idx is close to last waypoint in the trajectory
-  replan_start_idx = std::min(path_idx + static_cast<size_t>((gp_replan_lookahead_sec_)/
-                                                      constraints_.sampling_dt),
-                              global_path.size());
 
-  // TEST!!!!!!!!!!!!!!!!!!!===============================================
-  ROS_INFO("[DEBUGGING] replan_start_idx = %d", replan_start_idx);
-  mav_msgs::EigenTrajectoryPoint mytest = *(global_path.begin() + replan_start_idx);
-  ROS_INFO_STREAM("TRYING TO COPY GLOBAL PATH FROM " << mytest.position_W.transpose() << " AS STARTING POINT...");
-  // ===============================================================================
+  // // TEST!!!!!!!!!!!!!!!!!!!===============================================
+  // ROS_INFO("[DEBUGGING] replan_start_idx = %d", replan_start_idx);
+  // mav_msgs::EigenTrajectoryPoint mytest = *(global_path.begin() + replan_start_idx);
+  // ROS_INFO_STREAM("TRYING TO COPY GLOBAL PATH FROM " << mytest.position_W.transpose() << " AS STARTING POINT...");
+  // // ===============================================================================
 
   std::copy(global_path.begin() + replan_start_idx, global_path.end(), 
             std::back_inserter(chunk_for_revision));
@@ -305,6 +370,11 @@ void VoxbloxRrtPlanner::replanningRoutine(){
     chunk_for_revision.push_back(global_path.back());
   }
 
+  // Get first element of chunk for revision to know from where are you starting to plan
+  mav_msgs::EigenTrajectoryPoint first_element_path_chunk = chunk_for_revision[0];
+  ROS_INFO_STREAM("[DEBUGGING] Replanning start position : " 
+                  << first_element_path_chunk.position_W.transpose());
+
   // Only replan if your projected location has not reached the goal yet
   if (replan_start_idx < global_path.size()) {
 
@@ -314,7 +384,7 @@ void VoxbloxRrtPlanner::replanningRoutine(){
     bool chunk_in_collision = checkPathForCollisions(chunk_for_revision, NULL);
     if (chunk_in_collision){
       ROS_INFO("Global path in collision! REPLANNING...");
-      // Set start and end pose in the right form for planning 
+      // Set start and end pose of the replanning path chunk in the correct form for planning 
       mav_planning_msgs::PlannerServiceRequest req;
       mav_planning_msgs::PlannerServiceResponse resp;
       mav_msgs::msgPoseStampedFromEigenTrajectoryPoint(chunk_for_revision.front(), 
@@ -324,16 +394,15 @@ void VoxbloxRrtPlanner::replanningRoutine(){
       
       // Get global path for the new chunk
       new_gp_success = plannerServiceCallback(req, resp);
-      if (new_gp_success)
-      {
+      if (new_gp_success) {
         // Remove old piece of trajectory that was in collision
         global_path.erase(global_path.begin() + replan_start_idx,
                           global_path.end());
-        ROS_INFO("[DEBUGGING] Global path size after erasing old path = %d", global_path.size());
+        // ROS_INFO("[DEBUGGING] Global path size after erasing old path = %d", global_path.size());
 
         // Insert new path chunk that you just replanned
         global_path.insert(global_path.end(), ramp_path.begin(), ramp_path.end());
-        ROS_INFO("[DEBUGGING] Global path size after inserting new path = %d", global_path.size());
+        // ROS_INFO("[DEBUGGING] Global path size after inserting new path = %d", global_path.size());
 
         // VERY IMPORTANT: Clear ramp_path!
         ramp_path.clear();
@@ -372,9 +441,11 @@ void VoxbloxRrtPlanner::replanningRoutine(){
     // able_to_plan = 1;
     return;
   }
-  ROS_INFO("NO MORE PATH TO REPLAN. Following trajectory planned on last" 
+  ROS_INFO("NO MORE PATH TO REPLAN. Following trajectory planned on latest" 
             " available information...");
   // able_to_plan = 1;
+
+  // ~END OF THE PATH REACHED!
   // Clear replanning routine flag so that if a new call to plannerServiceCallback()
   // occurs, it must be a request from the user interface.
   replanning = 0;
@@ -440,6 +511,13 @@ bool VoxbloxRrtPlanner::plannerServiceCallback(
   	// Use TSDF
   	if (CollisionCheckTsdf(start_pose.position_W, tsdf_map_->getTsdfLayerPtr())){
   		ROS_ERROR("Start pose occupied!");
+      start_pose_valid_ = 0;
+      if (first_time_occupied_){
+        saved_odometry_.position_W = odometry_.position_W;
+        saved_odometry_.orientation_W_B = odometry_.orientation_W_B;
+        // saved_idx = path_idx;
+        first_time_occupied_ = 0;
+      }
     	return false;
   	}
 
@@ -449,138 +527,149 @@ bool VoxbloxRrtPlanner::plannerServiceCallback(
     // }
   }
 
-  // (OLD (HELEN) STARTING POSE COLLISION CHECK)
-  // if (getMapDistance(start_pose.position_W) < constraints_.robot_radius) {
-  //   ROS_ERROR("Start pose occupied!");
+  // if (waypoints_added_ < num_waypoints_) {
+  //   global_waypoints_vector_.push_back(goal_pose);
+  //   waypoints_added_++;
   //   return false;
-  // }
+  // } else {
 
-  // COMMENT BELOW TO GET A OPTIMISTIC PLANNING (WRT ALLOWING THE GOAL POSE)
-  // if (getMapDistance(goal_pose.position_W) < constraints_.robot_radius) {
-  //   ROS_INFO_STREAM("ESDF value of the goal pose is " << getMapDistance(goal_pose.position_W) << "!...");
-  //   ROS_ERROR("Goal pose occupied!");
-  //   return false;
-  // }
+  //   goal_pose = global_waypoints_vector_[0];
 
-  mav_msgs::EigenTrajectoryPoint::Vector waypoints;
-  mav_trajectory_generation::timing::Timer rrtstar_timer("plan/rrt_star");
 
-  bool success =
-      rrt_.getPathBetweenWaypoints(start_pose, goal_pose, &waypoints);
-  rrtstar_timer.Stop();
-  double path_length = computePathLength(waypoints);
-  int num_vertices = waypoints.size();
-  ROS_INFO("RRT* Success? %d Path length: %f Vertices: %d", success,
-           path_length, num_vertices);
 
-  if (!success) {
-    return false;
-  }
+    // (OLD (HELEN) STARTING POSE COLLISION CHECK)
+    // if (getMapDistance(start_pose.position_W) < constraints_.robot_radius) {
+    //   ROS_ERROR("Start pose occupied!");
+    //   return false;
+    // }
 
-  visualization_msgs::MarkerArray marker_array;
-  if (visualize_) {
-    marker_array.markers.push_back(createMarkerForPath(
-        waypoints, frame_id_, mav_visualization::Color::Green(), "rrt_star",
-        0.075));
-    marker_array.markers.push_back(createMarkerForWaypoints(
-        waypoints, frame_id_, mav_visualization::Color::Green(),
-        "rrt_star_waypoints", 0.15));
-  }
+    // NOT USED ANYMORE! COMMENT BELOW TO GET A OPTIMISTIC PLANNING (WRT ALLOWING THE GOAL POSE)
+    // if (getMapDistance(goal_pose.position_W) < constraints_.robot_radius) {
+    //   ROS_INFO_STREAM("ESDF value of the goal pose is " << getMapDistance(goal_pose.position_W) << "!...");
+    //   ROS_ERROR("Goal pose occupied!");
+    //   return false;
+    // }
 
-  last_waypoints_ = waypoints;
+    mav_msgs::EigenTrajectoryPoint::Vector waypoints;
+    mav_trajectory_generation::timing::Timer rrtstar_timer("plan/rrt_star");
 
-  if (!do_smoothing_) {
-    last_trajectory_valid_ = true;
+    bool success =
+        rrt_.getPathBetweenWaypoints(start_pose, goal_pose, &waypoints);
+    rrtstar_timer.Stop();
+    double path_length = computePathLength(waypoints);
+    int num_vertices = waypoints.size();
+    ROS_INFO("RRT* Success? %d Path length: %f Vertices: %d", success,
+             path_length, num_vertices);
 
-    // Produce global trajectory vector ramp_path (only used for moving along the trajectory for 
-    // replanning, i.e. not sent to local planner)
-    generateFeasibleTrajectoryRamp(last_waypoints_, &ramp_path);
-    // Save planned path as global path if the current planning call was not done
-    // by the replanning routine.
-    if (!replanning){
-      ROS_INFO("INTERFACE REQUEST. Setting currently planned path as global path...");
-      global_path = ramp_path;	// Makes a hard copy of ramp_path (i.e. not pointing to same object)
-      // VERY IMPORTANT RESETS!
-      path_idx = 0;
-      ramp_path.clear();
+    if (!success) {
+      return false;
     }
 
-    // CLEAR HERE!
+    visualization_msgs::MarkerArray marker_array;
+    if (visualize_) {
+      marker_array.markers.push_back(createMarkerForPath(
+          waypoints, frame_id_, mav_visualization::Color::Green(), "rrt_star",
+          0.075));
+      marker_array.markers.push_back(createMarkerForWaypoints(
+          waypoints, frame_id_, mav_visualization::Color::Green(),
+          "rrt_star_waypoints", 0.15));
+    }
 
-  } else {
-    mav_msgs::EigenTrajectoryPointVector poly_path;
-    mav_trajectory_generation::timing::Timer poly_timer("plan/poly");
-    bool poly_has_collisions =
-        !generateFeasibleTrajectory(waypoints, &poly_path);
-    poly_timer.Stop();
+    last_waypoints_ = waypoints;
 
-    mav_msgs::EigenTrajectoryPointVector loco_path;
-    mav_trajectory_generation::timing::Timer loco_timer("plan/loco");
-    bool loco_has_collisions =
-        !generateFeasibleTrajectoryLoco(waypoints, &loco_path);
-    loco_timer.Stop();
-
-    mav_msgs::EigenTrajectoryPointVector loco2_path;
-    mav_trajectory_generation::timing::Timer loco2_timer("plan/loco2");
-    bool loco2_has_collisions =
-        !generateFeasibleTrajectoryLoco2(waypoints, &loco2_path);
-    loco2_timer.Stop();
-
-    // mav_msgs::EigenTrajectoryPointVector ramp_path;
-    // mav_trajectory_generation::timing::Timer ramp_timer("plan/ramp");
-    // bool ramp_has_collisions =
-    //     !generateFeasibleTrajectoryRamp(waypoints, &ramp_path);
-    // ramp_timer.Stop();    
-
-    ROS_INFO(
-        // "Poly Smoothed Path has collisions? %d Loco Path has collisions? %d "
-        // "Loco 2 has collisions? %d Velocity Ramp has collisions? %d",
-        "Poly Smoothed Path has collisions? %d Loco Path has collisions? %d "
-        "Loco 2 has collisions? %d ",
-        poly_has_collisions, loco_has_collisions, loco2_has_collisions);
-
-    if (!poly_has_collisions) {
+    if (!do_smoothing_) {
       last_trajectory_valid_ = true;
+
+      // Produce global trajectory vector ramp_path (only used for moving along the trajectory for 
+      // replanning, i.e. not sent to local planner)
+      generateFeasibleTrajectoryRamp(last_waypoints_, &ramp_path);
+      // Save planned path as global path if the current planning call was not done
+      // by the replanning routine.
+      if (!replanning){
+        ROS_INFO("INTERFACE REQUEST. Setting currently planned path as global path...");
+        global_path = ramp_path;	// Makes a hard copy of ramp_path (i.e. not pointing to same object)
+        // VERY IMPORTANT RESETS!
+        path_idx = 0;
+        ramp_path.clear();
+      }
+
+      // CLEAR HERE!
+
+    } else {
+      mav_msgs::EigenTrajectoryPointVector poly_path;
+      mav_trajectory_generation::timing::Timer poly_timer("plan/poly");
+      bool poly_has_collisions =
+          !generateFeasibleTrajectory(waypoints, &poly_path);
+      poly_timer.Stop();
+
+      mav_msgs::EigenTrajectoryPointVector loco_path;
+      mav_trajectory_generation::timing::Timer loco_timer("plan/loco");
+      bool loco_has_collisions =
+          !generateFeasibleTrajectoryLoco(waypoints, &loco_path);
+      loco_timer.Stop();
+
+      mav_msgs::EigenTrajectoryPointVector loco2_path;
+      mav_trajectory_generation::timing::Timer loco2_timer("plan/loco2");
+      bool loco2_has_collisions =
+          !generateFeasibleTrajectoryLoco2(waypoints, &loco2_path);
+      loco2_timer.Stop();
+
+      // mav_msgs::EigenTrajectoryPointVector ramp_path;
+      // mav_trajectory_generation::timing::Timer ramp_timer("plan/ramp");
+      // bool ramp_has_collisions =
+      //     !generateFeasibleTrajectoryRamp(waypoints, &ramp_path);
+      // ramp_timer.Stop();    
+
+      ROS_INFO(
+          // "Poly Smoothed Path has collisions? %d Loco Path has collisions? %d "
+          // "Loco 2 has collisions? %d Velocity Ramp has collisions? %d",
+          "Poly Smoothed Path has collisions? %d Loco Path has collisions? %d "
+          "Loco 2 has collisions? %d ",
+          poly_has_collisions, loco_has_collisions, loco2_has_collisions);
+
+      if (!poly_has_collisions) {
+        last_trajectory_valid_ = true;
+      }
+
+      if (visualize_) {
+        marker_array.markers.push_back(createMarkerForPath(
+            poly_path, frame_id_, mav_visualization::Color::Orange(), "poly",
+            0.075));
+        marker_array.markers.push_back(
+            createMarkerForPath(loco_path, frame_id_,
+                                mav_visualization::Color::Pink(), "loco", 0.075));
+        marker_array.markers.push_back(createMarkerForPath(
+            loco2_path, frame_id_, mav_visualization::Color::Teal(), "loco2",
+            0.075));
+        // marker_array.markers.push_back(createMarkerForPath(
+        //     ramp_path, frame_id_, mav_visualization::Color::Black(), "ramp",
+        //     0.075));
+      }
     }
 
     if (visualize_) {
-      marker_array.markers.push_back(createMarkerForPath(
-          poly_path, frame_id_, mav_visualization::Color::Orange(), "poly",
-          0.075));
-      marker_array.markers.push_back(
-          createMarkerForPath(loco_path, frame_id_,
-                              mav_visualization::Color::Pink(), "loco", 0.075));
-      marker_array.markers.push_back(createMarkerForPath(
-          loco2_path, frame_id_, mav_visualization::Color::Teal(), "loco2",
-          0.075));
-      // marker_array.markers.push_back(createMarkerForPath(
-      //     ramp_path, frame_id_, mav_visualization::Color::Black(), "ramp",
-      //     0.075));
+      path_marker_pub_.publish(marker_array);
     }
-  }
 
-  if (visualize_) {
-    path_marker_pub_.publish(marker_array);
-  }
+    response.success = success;
 
-  response.success = success;
+    ROS_INFO_STREAM("All timings: "
+                    << std::endl
+                    << mav_trajectory_generation::timing::Timing::Print());
+    ROS_INFO_STREAM("Finished planning with start point: "
+                    << start_pose.position_W.transpose()
+                    << " and goal point: " << goal_pose.position_W.transpose());
 
-  ROS_INFO_STREAM("All timings: "
-                  << std::endl
-                  << mav_trajectory_generation::timing::Timing::Print());
-  ROS_INFO_STREAM("Finished planning with start point: "
-                  << start_pose.position_W.transpose()
-                  << " and goal point: " << goal_pose.position_W.transpose());
+    // // Set timer options (especify callback queue and function) for global replanning.
+    // ros::TimerOptions gp_timer_options(ros::Duration(gp_replan_dt),
+    //     boost::bind(&VoxbloxRrtPlanner::gpTimerCallback, this, _1),
+    //     &gp_queue_);
 
-  // // Set timer options (especify callback queue and function) for global replanning.
-  // ros::TimerOptions gp_timer_options(ros::Duration(gp_replan_dt),
-  //     boost::bind(&VoxbloxRrtPlanner::gpTimerCallback, this, _1),
-  //     &gp_queue_);
+    // // Create timer object for replanning.
+    // gp_timer_ = nh_.createTimer(gp_timer_options);
 
-  // // Create timer object for replanning.
-  // gp_timer_ = nh_.createTimer(gp_timer_options);
-
-  return success;
+    return success;
+  // }
 }
 
 bool VoxbloxRrtPlanner::generateFeasibleTrajectoryRamp(

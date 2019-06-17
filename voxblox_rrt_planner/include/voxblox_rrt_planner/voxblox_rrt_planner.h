@@ -170,6 +170,22 @@ class VoxbloxRrtPlanner {
   //Robot state.
   mav_msgs::EigenOdometry odometry_;
 
+  bool start_pose_valid_;
+
+  mav_msgs::EigenTrajectoryPoint saved_odometry_;
+
+  mav_msgs::EigenTrajectoryPoint point_to_compare_;
+
+  bool first_time_occupied_;
+
+  mav_msgs::EigenTrajectoryPointVector global_waypoints_vector_;
+
+  int num_waypoints_;
+
+  int waypoints_added_;
+
+  // size_t saved_idx;
+
 };
 
 }  // namespace mav_planning

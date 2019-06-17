@@ -1,7 +1,7 @@
 <launch>
   <arg name="mav_name" default="firefly"/>
   <arg name="frame_id" default="odom" />
-  <arg name="robot_radius" default="0.3" />
+  <arg name="robot_radius" default="0.72" />
   <arg name="voxel_size" default="0.1" /> <!--"0.2" is the default-->
   <!--arg name="voxblox_path" default="/home/emilk/Downloads/mav_voxblox_planning_maps/machine_hall/voxblox/rs_esdf_0.10.voxblox" /-->
 
@@ -31,7 +31,7 @@
       <param name="optimistic" value="true" />
 
       <!-- Set maximum distance between nodes in the tree -->
-      <param name="max_branch_length" value="0.0" />
+      <param name="max_branch_length" value="5.0" />
 
       <!-- Specify if constant altitude flight is required -->
       <param name="constant_altitude" value="true" />
@@ -45,14 +45,14 @@
       <param name="planner_type" value="kInformedRrtStar" />
 
       <!-- Activate replanning functionality -->
-      <param name="activate_replanning" value="false" />
+      <param name="activate_replanning" value="true" />
 
       <!-- Timer period for global trajectory replanning -->
-      <param name="gp_replan_dt" value="1" />
+      <param name="gp_replan_dt" value="1.0" />
 
       <!-- Time window for moving ahead along the global path -->
       <!-- Should satisfy  gp_replan_lookahead_sec_>=num_seconds_to_plan-->
-      <param name="gp_replan_lookahead_sec" value="3.0" />
+      <param name="gp_replan_lookahead_sec" value="2.0" />
 
       <!-- WEIGHTS FOR OPTIMIZATION OBJECTIVE of the form (alpha*LenghtObj + beta*AltitudeObj) -->
       <param name="alpha" value="1.0" />
