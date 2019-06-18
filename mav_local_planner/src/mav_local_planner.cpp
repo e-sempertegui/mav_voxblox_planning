@@ -399,7 +399,7 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
         number_of_attempts_ = 0;
         // ONlY PLAN FOR THE NEXT WAYPOINT IF YOU ARE CLOSE ENOUGH or if you exceed max number of 
         // attemps to reach previous waypoint
-        if ((odometry_.position_W - waypoint.position_W).norm() < 0.5){
+        if ((odometry_.position_W - waypoint.position_W).norm() < 0.1){
           bool next_point = nextWaypoint();
           // // Only problem with this is that it doesn't exactly get to the intermediate waypoints
           // // PLUS it does start planning from the beggining (smoothing) as there is path_queue_ is empty
@@ -470,7 +470,7 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
         // Reduce the number below to ensure the MAV gets closer to the current waypoint it is 
         // flying towards before planning to the next one
         if (trajectory.getMaxTime() <= 1e-6) {
-          if ((odometry_.position_W - waypoint.position_W).norm() < 0.5){
+          if ((odometry_.position_W - waypoint.position_W).norm() < 0.1){
             nextWaypoint();
           }
           else {
