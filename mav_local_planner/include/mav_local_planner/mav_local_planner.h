@@ -222,6 +222,8 @@ class MavLocalPlanner {
   bool planning_forward_;
 
   int number_of_attempts_;
+
+  int angular_range_;
 };
 
 }  // namespace mav_planning

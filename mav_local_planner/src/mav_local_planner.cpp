@@ -34,6 +34,7 @@ MavLocalPlanner::MavLocalPlanner(const ros::NodeHandle& nh,
       done_once_(false),
       planning_forward_(false),
       number_of_attempts_(0),
+      angular_range_(30),
       esdf_server_(nh_, nh_private_),
       loco_planner_(nh_, nh_private_) {
   // Set up some settings.
@@ -58,6 +59,7 @@ MavLocalPlanner::MavLocalPlanner(const ros::NodeHandle& nh,
   nh_private_.param("plan_to_start", plan_to_start_, plan_to_start_);
   nh_private_.param("smoother_name", smoother_name_, smoother_name_);
   nh_private_.param("recovery_mode_enabled_", recovery_mode_enabled_, recovery_mode_enabled_);
+  nh_private_.param("angular_range", angular_range_, angular_range_);
 
   // Publishers and subscribers.
   odometry_sub_ = nh_.subscribe(mav_msgs::default_topics::ODOMETRY, 1,
@@ -425,7 +427,7 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
     toEulerAngle(odometry_.orientation_W_B, ro, pitch, yw);
     double desired_heading = compute_heading(waypoint);
     // double yaw_difference = computeYawDifference(yw, desired_heading);
-    if (std::abs(yw - desired_heading) < 25*(M_PI/180)) {
+    if (std::abs(yw - desired_heading) < angular_range_*(M_PI/180)) {
 
       // Otherwise we gotta replan this thing anyway.
       success = loco_planner_.getTrajectoryTowardGoal(path_chunk.front(),
@@ -470,7 +472,7 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
         // Reduce the number below to ensure the MAV gets closer to the current waypoint it is 
         // flying towards before planning to the next one
         if (trajectory.getMaxTime() <= 1e-6) {
-          if ((odometry_.position_W - waypoint.position_W).norm() < 0.1){
+          if ((odometry_.position_W - waypoint.position_W).norm() < angular_range_){
             nextWaypoint();
           }
           else {

@@ -42,6 +42,7 @@
       <param name="v_max" value="0.8" />
       <param name="a_max" value="1.0" />
       <param name="avoid_collisions" value="true" />
+      <param name="angular_range" value="50" />
 
       <!-- What to do in case of failure. -->
       <param name="goal_selector_strategy" value="none" />
