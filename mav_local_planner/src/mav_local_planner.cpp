@@ -472,7 +472,7 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
         // Reduce the number below to ensure the MAV gets closer to the current waypoint it is 
         // flying towards before planning to the next one
         if (trajectory.getMaxTime() <= 1e-6) {
-          if ((odometry_.position_W - waypoint.position_W).norm() < angular_range_){
+          if ((odometry_.position_W - waypoint.position_W).norm() < 0.1){
             nextWaypoint();
           }
           else {
@@ -552,7 +552,7 @@ void MavLocalPlanner::avoidCollisionsTowardWaypoint() {
 
     // if (false) {
 
-    if (std::abs(yw - waypoint_heading_angle) < 10*(M_PI/180) ){// abs(robot orientation - goal orientation) <= 8degrees
+    if (std::abs(yw - waypoint_heading_angle) < angular_range_*(M_PI/180) ){// abs(robot orientation - goal orientation) <= 8degrees
       ROS_INFO("[Mav Local Planner][Plan Step] LOCO planner execution!...");
       // then allow to plan to new waypoint
       // else return and repeat process to the same waypoint
