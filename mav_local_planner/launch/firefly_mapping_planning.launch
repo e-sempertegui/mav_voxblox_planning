@@ -2,9 +2,9 @@
   <arg name="mav_name" default="firefly"/>
   <arg name="frame_id" default="odom" />
   <arg name="verbose" default="false"/>
-  <arg name="voxel_size" default="0.10" />
+  <arg name="voxel_size" default="0.20" />
   <arg name="robot_radius" default="0.72" />
-  <arg name="clear_radius" default="1.0" />
+  <arg name="clear_radius" default="0.3" />
 
   <group ns="$(arg mav_name)">
     <node name="voxblox_node" pkg="voxblox_ros" type="esdf_server" output="screen" args="-alsologtostderr" clear_params="true">
@@ -25,15 +25,15 @@
       <param name="voxel_carving_enabled" value="true" />
       <param name="color_mode" value="color" />
       <param name="use_tf_transforms" value="true" />
-      <param name="update_mesh_every_n_sec" value="0.25" />
+      <param name="update_mesh_every_n_sec" value="0.25" /> <!-- 0.25-->
       <param name="min_time_between_msgs_sec" value="0.10" />
-      <!-- <param name="clear_sphere_for_planning" value="true" /> -->
+      <param name="clear_sphere_for_planning" value="true" />
 <!-- <<<<<<< HEAD -->
       <!-- <param name="occupied_sphere_radius" value="5.0" /> -->
       <!-- <param name="clear_sphere_radius" value="1.0" /> -->
       <!-- <param name="slice_level" value="0.5" /> -->
 <!-- ======= -->
-      <param name="occupied_sphere_radius" value="4.0" />
+      <param name="occupied_sphere_radius" value="0.0" />
       <param name="clear_sphere_radius" value="$(arg clear_radius)" />
       <param name="slice_level" value="0.5" /> <!--Default value = 1.0-->
 <!-- >>>>>>> master -->

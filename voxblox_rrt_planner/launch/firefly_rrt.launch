@@ -2,7 +2,7 @@
   <arg name="mav_name" default="firefly"/>
   <arg name="frame_id" default="odom" />
   <arg name="robot_radius" default="0.72" />
-  <arg name="voxel_size" default="0.1" /> <!--"0.2" is the default-->
+  <arg name="voxel_size" default="0.2" /> <!--"0.2" is the default-->
   <!--arg name="voxblox_path" default="/home/emilk/Downloads/mav_voxblox_planning_maps/machine_hall/voxblox/rs_esdf_0.10.voxblox" /-->
 
   <group ns="$(arg mav_name)">
